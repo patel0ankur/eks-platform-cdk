@@ -143,3 +143,19 @@ Controller + Ingress, or ingress-nginx) before/with Backstage.
   Added launch template hopLimit=2. NOTE: LT only attaches at nodegroup CREATION → had to replace
   the nodegroup (renamed construct id + nodegroupName idp-nodes-lt).
 - ingress-nginx is RETIRED (archived Mar 2026) — chose LBC/ALB instead.
+
+## 8c Keycloak realm + OIDC + HTTPS — DONE (2026-06-24)
+- Realm "backstage" + OIDC client "backstage" + "developer" user via PostSync config Job
+  (gitops/platform/keycloak/keycloak-config.yaml) that harvests the client secret into
+  k8s Secret keycloak-clients. No secrets in git.
+- Keycloak served under /keycloak (KC_HTTP_RELATIVE_PATH). Reachable HTTPS at
+  https://patelax.people.aws.dev/keycloak (admin console /keycloak/admin/).
+- Ingress: shared ALB group "idp", HTTP+HTTPS, ssl-redirect, cert auto-discovered from
+  host rule (no hardcoded ARN — that trips Code Defender push scanner). Route53 apex
+  alias + ACM cert (DNS-validated) set up out-of-band.
+- LESSON: KC_HTTP_RELATIVE_PATH ripples to probes, ALB healthcheck, config-Job URLs,
+  KC_HOSTNAME — change all together. PostSync hook job hanging blocks the whole sync.
+
+## TLS/DNS for public users (PREREQ to document in README)
+- Provide a domain (CDK_PLATFORM_DOMAIN), an ACM cert covering it, a Route53 (or other)
+  record pointing the domain at the ALB. Update the `host:` in keycloak/backstage Ingress.
