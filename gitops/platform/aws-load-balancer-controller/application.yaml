@@ -8,7 +8,9 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: aws-load-balancer-controller
+  # Distinct from the ApplicationSet-generated directory app for this folder
+  # (which is named after the folder) to avoid a self-referential name clash.
+  name: aws-load-balancer-controller-helm
   namespace: argocd
 spec:
   project: default
