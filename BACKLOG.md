@@ -73,3 +73,27 @@ Cluster registration (CORRECTED 2026-06-24 — earlier assumption was WRONG):
   grantAccess(capabilityRole, AmazonEKSClusterAdminPolicy) so the ApplicationSet
   destination name=in-cluster resolves. Then Keycloak/Backstage sync.
 - Docs: eks/latest/userguide/argocd-register-clusters.html
+
+## Secrets: AWS Secrets Manager via Secrets Store CSI Driver (chosen path)
+
+Decision: use the AWS Secrets Store CSI Driver (managed-addon provider + core
+driver) instead of ESO, to keep secrets out of git. All facts verified upstream
+2026-06-24 (no first-boot race — the synced k8s Secret is created during volume
+mount, before the container starts).
+
+Components:
+- CDK: generate passwords in Secrets Manager (idp/keycloak/admin, idp/keycloak/
+  postgres); Pod Identity role (pods.eks.amazonaws.com, AssumeRole+TagSession)
+  with secretsmanager:GetSecretValue/DescribeSecret on idp/*; associate that
+  role to the WORKLOAD service accounts (keycloak, postgres) — ASCP assumes the
+  consuming pod's identity. Add EKS addon aws-secrets-store-csi-driver-provider.
+- GitOps gitops/platform/secrets-store-csi/: core driver via Helm with
+  syncSecret.enabled=true (OFF by default — required for secretObjects).
+- GitOps keycloak ns: ServiceAccounts (keycloak, postgres); SecretProviderClass
+  per workload with usePodIdentity:"true" + secretObjects to sync a k8s Secret;
+  add CSI volume + volumeMount to keycloak Deployment and postgres StatefulSet;
+  env vars read from the synced Secret. Remove hardcoded placeholder passwords.
+- Caveat: synced Secret lifecycle is tied to a mounting pod (deleted when all
+  consuming pods are gone) — fine in steady state.
+- syncSecret flag confirmed: secrets-store-csi-driver helm value
+  syncSecret.enabled=true. Provider addon does NOT bundle core driver here.

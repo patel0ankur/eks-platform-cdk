@@ -1,0 +1,35 @@
+# Core Secrets Store CSI Driver (upstream sigs.k8s.io chart), installed via a
+# nested ArgoCD Application so it can use a Helm source.
+#
+# syncSecret.enabled=true is required for the secretObjects feature (creating a
+# Kubernetes Secret from mounted secrets); it is OFF by default. enableSecretRotation
+# lets mounted/synced values refresh when the source secret changes.
+#
+# The AWS provider for this driver is installed separately as an EKS managed
+# add-on (see SecretsStack).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: secrets-store-csi-driver
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+    chart: secrets-store-csi-driver
+    targetRevision: 1.5.4
+    helm:
+      releaseName: csi-secrets-store
+      valuesObject:
+        syncSecret:
+          enabled: true
+        enableSecretRotation: true
+  destination:
+    name: in-cluster
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

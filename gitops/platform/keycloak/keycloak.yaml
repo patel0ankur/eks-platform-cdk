@@ -1,18 +1,12 @@
 # Keycloak (official upstream image) backed by the Postgres above.
 # Runs in production mode with HTTP enabled behind the in-cluster Service;
 # TLS is expected to terminate at an ingress/load balancer in front of it.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: keycloak-admin
-  namespace: keycloak
-type: Opaque
-stringData:
-  # Bootstrap admin for the Keycloak master realm. Replace via Secrets Manager
-  # / ExternalSecret for production.
-  KEYCLOAK_ADMIN: admin
-  KEYCLOAK_ADMIN_PASSWORD: keycloak-admin-pw
----
+#
+# Secrets (admin password + DB password) come from AWS Secrets Manager via the
+# Secrets Store CSI Driver: the pod mounts the CSI volume (SecretProviderClass
+# keycloak-admin), which syncs the "keycloak-admin" Kubernetes Secret consumed
+# below. The admin username and DB username are not secret, so they are plain
+# env values.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,6 +22,7 @@ spec:
       labels:
         app: keycloak
     spec:
+      serviceAccountName: keycloak
       # Wait for Postgres to accept TCP connections before starting Keycloak,
       # so a fresh deploy doesn't crash-loop while the database comes up.
       initContainers:
@@ -54,22 +49,16 @@ spec:
             - name: KC_DB_URL
               value: jdbc:postgresql://postgres.keycloak.svc:5432/keycloak
             - name: KC_DB_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: keycloak-postgres
-                  key: POSTGRES_USER
+              value: keycloak
             - name: KC_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: keycloak-postgres
-                  key: POSTGRES_PASSWORD
-            # Bootstrap admin (KC_BOOTSTRAP_* are the current var names; the
-            # older KEYCLOAK_ADMIN* are deprecated).
-            - name: KC_BOOTSTRAP_ADMIN_USERNAME
-              valueFrom:
-                secretKeyRef:
                   name: keycloak-admin
-                  key: KEYCLOAK_ADMIN
+                  key: KC_DB_PASSWORD
+            # Bootstrap admin. Username is not secret; password comes from the
+            # CSI-synced Secret. (KC_BOOTSTRAP_* are the current var names.)
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: admin
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -89,6 +78,11 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          volumeMounts:
+            # Mounting the CSI volume is what triggers the secret sync.
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -102,6 +96,13 @@ spec:
               port: 9000
             initialDelaySeconds: 60
             periodSeconds: 15
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: keycloak-admin
 ---
 apiVersion: v1
 kind: Service

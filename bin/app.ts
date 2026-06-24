@@ -10,6 +10,7 @@ import { EksStack } from "../lib/eks-stack";
 import { IdcStack } from "../lib/idc-stack";
 import { ArgoCdStack } from "../lib/argocd-stack";
 import { PlatformBootstrapStack } from "../lib/platform-bootstrap-stack";
+import { SecretsStack } from "../lib/secrets-stack";
 import { config } from "../lib/config";
 
 /**
@@ -122,5 +123,14 @@ const platformBootstrap = new PlatformBootstrapStack(
   { env, cluster: eksStack.cluster },
 );
 platformBootstrap.addDependency(argoCdStack);
+
+// Secrets Manager passwords + the AWS Secrets Store CSI provider add-on and
+// Pod Identity wiring, so platform workloads (Keycloak, Postgres) read secrets
+// from Secrets Manager instead of hardcoded values.
+const secretsStack = new SecretsStack(app, `${config.prefix}-secrets`, {
+  env,
+  clusterName: config.clusterName,
+});
+secretsStack.addDependency(eksStack);
 
 app.synth();

@@ -1,18 +1,10 @@
 # PostgreSQL backing store for Keycloak. A single replica with a persistent
 # volume is sufficient for a platform IdP at this scale.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: keycloak-postgres
-  namespace: keycloak
-type: Opaque
-stringData:
-  # Demo credentials. For production, replace with an ExternalSecret sourced
-  # from AWS Secrets Manager.
-  POSTGRES_DB: keycloak
-  POSTGRES_USER: keycloak
-  POSTGRES_PASSWORD: keycloak-postgres-pw
----
+#
+# The password comes from AWS Secrets Manager via the Secrets Store CSI Driver:
+# the pod mounts the CSI volume (SecretProviderClass keycloak-postgres), which
+# syncs the "keycloak-postgres" Kubernetes Secret consumed below. DB name and
+# user are not secret, so they are plain env values.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -29,23 +21,42 @@ spec:
       labels:
         app: postgres
     spec:
+      serviceAccountName: postgres
       containers:
         - name: postgres
           image: docker.io/library/postgres:17.4-alpine3.21
           ports:
             - containerPort: 5432
-          envFrom:
-            - secretRef:
-                name: keycloak-postgres
+          env:
+            - name: POSTGRES_DB
+              value: keycloak
+            - name: POSTGRES_USER
+              value: keycloak
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgres
+                  key: POSTGRES_PASSWORD
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
               subPath: pgdata
+            # Mounting the CSI volume is what triggers the secret sync.
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "keycloak"]
             initialDelaySeconds: 10
             periodSeconds: 10
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: keycloak-postgres
   volumeClaimTemplates:
     - metadata:
         name: data
