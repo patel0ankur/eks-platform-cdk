@@ -1,0 +1,46 @@
+# RBAC fix for the Secrets Store CSI Driver installed by the EKS managed addon.
+#
+# The addon installs the driver as ServiceAccount
+# `secrets-store-csi-driver` in namespace `aws-secrets-manager`, but the
+# driver's ClusterRoleBindings (created by the addon) bind the upstream-default
+# SA in `kube-system`. That namespace mismatch leaves the running driver
+# without permission to watch its own CRDs, so it crash-loops. These bindings
+# grant the correct SA the roles it needs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: secretproviderclasses-rolebinding-asm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: secretproviderclasses-role
+subjects:
+  - kind: ServiceAccount
+    name: secrets-store-csi-driver
+    namespace: aws-secrets-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: secretproviderrotation-rolebinding-asm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: secretproviderrotation-role
+subjects:
+  - kind: ServiceAccount
+    name: secrets-store-csi-driver
+    namespace: aws-secrets-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: secretprovidersyncing-rolebinding-asm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: secretprovidersyncing-role
+subjects:
+  - kind: ServiceAccount
+    name: secrets-store-csi-driver
+    namespace: aws-secrets-manager
