@@ -93,16 +93,17 @@ spec:
             - name: secrets-store
               mountPath: /mnt/secrets-store
               readOnly: true
+          # Health endpoints move under the relative path too (port 9000).
           readinessProbe:
             httpGet:
-              path: /health/ready
+              path: /keycloak/health/ready
               port: 9000
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /health/live
+              path: /keycloak/health/live
               port: 9000
             initialDelaySeconds: 60
             periodSeconds: 15
