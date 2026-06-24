@@ -7,21 +7,22 @@ import * as path from "path";
 import { config } from "./config";
 
 export interface IngressStackProps extends cdk.StackProps {
-  /** Cluster name, used to scope the Pod Identity association. */
-  readonly clusterName: string;
+  /** The EKS cluster to install the controller onto. */
+  readonly cluster: eks.Cluster;
 }
 
 /**
- * IngressStack — IAM wiring for the AWS Load Balancer Controller (LBC).
+ * IngressStack — the AWS Load Balancer Controller (LBC), end to end.
+ *
+ * Installs the controller as a SINGLE ArgoCD Application (its official Helm
+ * chart), applied directly from CDK — no GitOps directory wrapper, so it shows
+ * up as exactly one app. IAM is provided via EKS Pod Identity.
  *
  * The LBC watches Kubernetes Ingress objects and provisions AWS Application
  * Load Balancers for them. It needs broad ELB/EC2/WAF permissions, granted via
  * the controller's official IAM policy. Credentials are delivered through EKS
  * Pod Identity (consistent with the rest of the platform), associated with the
  * controller's service account (kube-system/aws-load-balancer-controller).
- *
- * The controller itself is installed via GitOps (Helm) in
- * gitops/platform/aws-load-balancer-controller/.
  */
 export class IngressStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: IngressStackProps) {
@@ -61,10 +62,53 @@ export class IngressStack extends cdk.Stack {
 
     // Bind the role to the controller's service account.
     new eks.CfnPodIdentityAssociation(this, "LbcPodIdentity", {
-      clusterName: props.clusterName,
+      clusterName: props.cluster.clusterName,
       namespace: "kube-system",
       serviceAccount: "aws-load-balancer-controller",
       roleArn: lbcRole.roleArn,
+    });
+
+    // Install the controller as a single ArgoCD Application (its Helm chart),
+    // applied directly here. One app, no GitOps directory wrapper. ArgoCD syncs
+    // the chart; the service account it creates is bound to the IAM role above
+    // via the Pod Identity association.
+    new eks.KubernetesManifest(this, "LbcArgoApp", {
+      cluster: props.cluster,
+      manifest: [
+        {
+          apiVersion: "argoproj.io/v1alpha1",
+          kind: "Application",
+          metadata: {
+            name: "aws-load-balancer-controller",
+            namespace: "argocd",
+          },
+          spec: {
+            project: "default",
+            source: {
+              repoURL: "https://aws.github.io/eks-charts",
+              chart: "aws-load-balancer-controller",
+              targetRevision: "1.13.4",
+              helm: {
+                releaseName: "aws-load-balancer-controller",
+                valuesObject: {
+                  clusterName: config.clusterName,
+                  region: this.region,
+                  vpcId: props.cluster.vpc.vpcId,
+                  serviceAccount: {
+                    create: true,
+                    name: "aws-load-balancer-controller",
+                  },
+                },
+              },
+            },
+            destination: { name: "in-cluster", namespace: "kube-system" },
+            syncPolicy: {
+              automated: { prune: true, selfHeal: true },
+              syncOptions: ["CreateNamespace=true"],
+            },
+          },
+        },
+      ],
     });
 
     new cdk.CfnOutput(this, "LbcRoleArn", { value: lbcRole.roleArn });

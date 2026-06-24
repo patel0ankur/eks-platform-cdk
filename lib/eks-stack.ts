@@ -105,9 +105,26 @@ export class EksStack extends cdk.Stack {
       defaultCapacity: 0,
     });
 
+    // Launch template that raises the IMDS hop limit to 2. The EKS default is
+    // 1, which prevents PODS from reaching the instance metadata service (the
+    // extra network hop into the pod netns exceeds the limit). Several
+    // controllers (AWS Load Balancer Controller, EBS CSI) fetch region/VPC or
+    // credentials from IMDS, so a limit of 1 breaks them. The template sets
+    // only metadata options — no AMI/instance type — so EKS still injects the
+    // AL2023 image and the node group keeps its own instance type.
+    const nodeLaunchTemplate = new ec2.LaunchTemplate(this, "NodeLaunchTemplate", {
+      launchTemplateName: `${config.prefix}-node-lt`,
+      httpTokens: ec2.LaunchTemplateHttpTokens.REQUIRED, // IMDSv2
+      httpPutResponseHopLimit: 2,
+    });
+
     // Managed node group: EC2 worker nodes that run pods.
-    this.cluster.addNodegroupCapacity("DefaultNodeGroup", {
-      nodegroupName: `${config.prefix}-nodes`,
+    // NOTE: a launch template can only be attached at node group CREATION, so
+    // this group carries the IMDS launch template from the start. (The
+    // construct id "DefaultNodeGroupLt" differs from any earlier group so a
+    // cluster created without the template gets a clean replacement.)
+    this.cluster.addNodegroupCapacity("DefaultNodeGroupLt", {
+      nodegroupName: `${config.prefix}-nodes-lt`,
       instanceTypes: [new ec2.InstanceType(config.nodeGroup.instanceType)],
       nodeRole,
       desiredSize: config.nodeGroup.desiredSize,
@@ -117,6 +134,10 @@ export class EksStack extends cdk.Stack {
       // Amazon Linux 2023 is required: the older AL2 AMI is not supported on
       // Kubernetes 1.33+.
       amiType: eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
+      launchTemplateSpec: {
+        id: nodeLaunchTemplate.launchTemplateId!,
+        version: nodeLaunchTemplate.latestVersionNumber,
+      },
     });
 
     // Core EKS-managed add-ons. The base cluster ships CNI/CoreDNS/kube-proxy

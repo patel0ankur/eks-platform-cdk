@@ -147,7 +147,7 @@ new BackstageBuildStack(app, `${config.prefix}-backstage-build`, {
 // aws-load-balancer-controller). Provisions ALBs from Ingress objects.
 const ingressStack = new IngressStack(app, `${config.prefix}-ingress`, {
   env,
-  clusterName: config.clusterName,
+  cluster: eksStack.cluster,
 });
 ingressStack.addDependency(eksStack);
 
