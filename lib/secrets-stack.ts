@@ -89,12 +89,21 @@ export class SecretsStack extends cdk.Stack {
     }
 
     // AWS Secrets Manager provider for the Secrets Store CSI Driver (managed
-    // add-on). The upstream core driver itself is installed via GitOps (Helm)
-    // with syncSecret enabled.
+    // add-on). This add-on bundles the upstream core driver as a dependency,
+    // so no separate Helm install is needed. The core driver's syncSecret
+    // feature (OFF by default) must be enabled here for `secretObjects` to
+    // create Kubernetes Secrets; secret rotation is enabled so synced values
+    // refresh when the source secret changes.
     new eks.CfnAddon(this, "SecretsStoreCsiProvider", {
       clusterName: props.clusterName,
       addonName: "aws-secrets-store-csi-driver-provider",
       resolveConflicts: "OVERWRITE",
+      configurationValues: JSON.stringify({
+        "secrets-store-csi-driver": {
+          syncSecret: { enabled: true },
+          enableSecretRotation: true,
+        },
+      }),
     });
   }
 }
