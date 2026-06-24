@@ -1,0 +1,13 @@
+*.js
+!jest.config.js
+*.d.ts
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# Account-specific context cache (AZ lookups, etc.) — must NOT be committed.
+# CDK regenerates this per-account at synth time. Committing it would leak the
+# author's account ID and could feed wrong data to other users' deploys.
+cdk.context.json
