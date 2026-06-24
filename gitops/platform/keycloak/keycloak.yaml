@@ -93,17 +93,19 @@ spec:
             - name: secrets-store
               mountPath: /mnt/secrets-store
               readOnly: true
-          # Health endpoints move under the relative path too (port 9000).
+          # The management interface (port 9000) serves health at ROOT and does
+          # NOT honor KC_HTTP_RELATIVE_PATH (that only affects the 8080 HTTP
+          # listener). So probes stay at /health/*.
           readinessProbe:
             httpGet:
-              path: /keycloak/health/ready
+              path: /health/ready
               port: 9000
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /keycloak/health/live
+              path: /health/live
               port: 9000
             initialDelaySeconds: 60
             periodSeconds: 15
