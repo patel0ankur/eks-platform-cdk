@@ -11,6 +11,7 @@ import { IdcStack } from "../lib/idc-stack";
 import { ArgoCdStack } from "../lib/argocd-stack";
 import { PlatformBootstrapStack } from "../lib/platform-bootstrap-stack";
 import { SecretsStack } from "../lib/secrets-stack";
+import { BackstageBuildStack } from "../lib/backstage-build-stack";
 import { config } from "../lib/config";
 
 /**
@@ -132,5 +133,12 @@ const secretsStack = new SecretsStack(app, `${config.prefix}-secrets`, {
   clusterName: config.clusterName,
 });
 secretsStack.addDependency(eksStack);
+
+// Backstage image build: CodeBuild builds backstage/ from this repo into ECR,
+// auto-triggered on deploy. Reuses the CodeBuild role from IamStack.
+new BackstageBuildStack(app, `${config.prefix}-backstage-build`, {
+  env,
+  codeBuildRoleArn: iamStack.codeBuildRole.roleArn,
+});
 
 app.synth();

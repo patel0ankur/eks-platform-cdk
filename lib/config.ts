@@ -17,6 +17,9 @@ export const config = {
   /** ECR repository name where CodeBuild pushes built application images. */
   ecrRepoName: "idp-app",
 
+  /** ECR repository for the Backstage developer-portal image. */
+  backstageEcrRepoName: "idp-backstage",
+
   /** Kubernetes version for the EKS cluster. */
   kubernetesVersion: "1.35",
 
