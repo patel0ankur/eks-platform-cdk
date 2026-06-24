@@ -1,0 +1,34 @@
+# AWS Load Balancer Controller — provisions AWS ALBs from Kubernetes Ingress
+# objects. Installed via a nested ArgoCD Application using the official Helm
+# chart. IAM is provided out-of-band via EKS Pod Identity (see IngressStack),
+# so the chart only creates the service account (no IRSA role annotation).
+#
+# clusterName is required. region and VPC are auto-discovered by the controller
+# from instance metadata, so they are not set here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+    targetRevision: 1.13.4
+    helm:
+      releaseName: aws-load-balancer-controller
+      valuesObject:
+        clusterName: idp-cluster
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+  destination:
+    name: in-cluster
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

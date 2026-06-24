@@ -12,6 +12,7 @@ import { ArgoCdStack } from "../lib/argocd-stack";
 import { PlatformBootstrapStack } from "../lib/platform-bootstrap-stack";
 import { SecretsStack } from "../lib/secrets-stack";
 import { BackstageBuildStack } from "../lib/backstage-build-stack";
+import { IngressStack } from "../lib/ingress-stack";
 import { config } from "../lib/config";
 
 /**
@@ -140,5 +141,14 @@ new BackstageBuildStack(app, `${config.prefix}-backstage-build`, {
   env,
   codeBuildRoleArn: iamStack.codeBuildRole.roleArn,
 });
+
+// Ingress: IAM (Pod Identity) for the AWS Load Balancer Controller. The
+// controller itself is installed via GitOps (gitops/platform/
+// aws-load-balancer-controller). Provisions ALBs from Ingress objects.
+const ingressStack = new IngressStack(app, `${config.prefix}-ingress`, {
+  env,
+  clusterName: config.clusterName,
+});
+ingressStack.addDependency(eksStack);
 
 app.synth();
