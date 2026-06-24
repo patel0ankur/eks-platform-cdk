@@ -117,11 +117,13 @@ spec:
                 secretKeyRef:
                   name: keycloak-clients
                   key: BACKSTAGE_CLIENT_SECRET
-            # Use the bundled mock integrations (proxy, kubernetes, terraform,
-            # argocd) so the portal boots without external service config.
-            # Authentication via Keycloak is independent of this and stays real.
-            - name: MOCK_MODE
-              value: "true"
+            # Run in real (non-mock) mode. The backend enables its Kubernetes,
+            # kro, and ArgoCD integrations only when an in-cluster service
+            # account token is present; since we don't mount one (above), those
+            # are skipped and the portal boots with just catalog, scaffolder,
+            # TechDocs, search, and Keycloak auth. (MOCK_MODE is intentionally
+            # NOT set: the mock plugins require fixture files absent from the
+            # production image.)
             - name: NODE_ENV
               value: production
           ports:
