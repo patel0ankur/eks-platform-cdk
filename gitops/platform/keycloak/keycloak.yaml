@@ -77,6 +77,11 @@ spec:
             # the ALB. Placeholder default: platform.example.com.
             - name: KC_HOSTNAME
               value: https://patelax.people.aws.dev/keycloak
+            # Serve Keycloak under the /keycloak path prefix (so it sits behind
+            # the shared ALB alongside Backstage). Without this, Keycloak serves
+            # at root and the /keycloak/* routes 404.
+            - name: KC_HTTP_RELATIVE_PATH
+              value: /keycloak
             # Build-time options baked so `start --optimized` works.
             - name: KC_HEALTH_ENABLED
               value: "true"
@@ -135,7 +140,10 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/group.name: idp
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
-    alb.ingress.kubernetes.io/healthcheck-path: /keycloak/health/ready
+    # Keycloak's /health is on the management port (9000), not the traffic port,
+    # so health-check a path Keycloak serves 200 on port 8080.
+    alb.ingress.kubernetes.io/healthcheck-path: /keycloak/realms/master
+    alb.ingress.kubernetes.io/success-codes: "200"
 spec:
   ingressClassName: alb
   rules:
