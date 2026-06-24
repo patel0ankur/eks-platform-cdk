@@ -24,6 +24,17 @@ export const config = {
   kubernetesVersion: "1.35",
 
   /**
+   * Platform domain — the hostname the ingress (ALB) serves, and the base for
+   * Keycloak/Backstage URLs and OIDC redirects. You MUST point this DNS name at
+   * the ALB (e.g. CNAME) for sign-in to work.
+   *
+   * PREREQUISITE for public users: set CDK_PLATFORM_DOMAIN to a domain you
+   * control. The default below is a placeholder.
+   *   export CDK_PLATFORM_DOMAIN=platform.example.com
+   */
+  domain: process.env.CDK_PLATFORM_DOMAIN ?? "platform.example.com",
+
+  /**
    * GitOps source repository that ArgoCD syncs from. ArgoCD Application CRs
    * point at folders under `gitops/` in this repo. The repo must be reachable
    * by ArgoCD (public GitHub, or private with registered credentials).
