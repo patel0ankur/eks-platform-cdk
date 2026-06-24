@@ -103,7 +103,7 @@ const idcStack = new IdcStack(app, `${config.prefix}-idc`, { env });
 // Depends on the cluster existing and the IDC groups being created.
 const argoCdStack = new ArgoCdStack(app, `${config.prefix}-argocd`, {
   env,
-  clusterName: config.clusterName,
+  cluster: eksStack.cluster,
   idcInstanceArn: idcStack.instanceArn,
   adminGroupId: idcStack.adminGroupId,
   editorGroupId: idcStack.editorGroupId,

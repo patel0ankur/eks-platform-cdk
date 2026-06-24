@@ -28,6 +28,18 @@ spec:
       labels:
         app: keycloak
     spec:
+      # Wait for Postgres to accept TCP connections before starting Keycloak,
+      # so a fresh deploy doesn't crash-loop while the database comes up.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for postgres.keycloak.svc:5432..."
+              until nc -z postgres.keycloak.svc 5432; do sleep 3; done
+              echo "Postgres is reachable."
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.3.3
@@ -51,13 +63,14 @@ spec:
                 secretKeyRef:
                   name: keycloak-postgres
                   key: POSTGRES_PASSWORD
-            # Bootstrap admin.
-            - name: KEYCLOAK_ADMIN
+            # Bootstrap admin (KC_BOOTSTRAP_* are the current var names; the
+            # older KEYCLOAK_ADMIN* are deprecated).
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: keycloak-admin
                   key: KEYCLOAK_ADMIN
-            - name: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: keycloak-admin

@@ -53,11 +53,23 @@ RESOLVED (verified on live cluster 2026-06-24):
   layer (cluster.addManifest) pointing at gitops/<app>/ in this repo. ArgoCD
   syncs it. No ArgoCD API/CLI/IDC-auth detour needed.
 
-Cluster registration (per AWS docs + verified on live cluster 2026-06-24):
-- The hub cluster the capability runs on is auto-registered as destination
-  `in-cluster`. Keycloak + Backstage deploy onto the hub, so use
-  `destination.name: in-cluster` (server-side dry-run accepted). No manual
-  cluster registration needed for these.
-- destination.name = registered cluster name (recommended) OR destination.server
-  = EKS cluster ARN. ADDITIONAL clusters (future spokes) must be registered by
-  name first — only relevant if/when we add multi-cluster deploys.
+Cluster registration (CORRECTED 2026-06-24 — earlier assumption was WRONG):
+- The capability does NOT auto-register the local cluster. Apps fail with
+  "no clusters with this name: in-cluster" until registered. kubernetes.default.svc
+  is explicitly "disabled"; the ARN works only once a cluster Secret exists.
+- Registering the local cluster requires TWO declarative things (both CDK-able,
+  no interactive CLI / IDC token):
+  1. ArgoCD cluster Secret in ns argocd, label
+     argocd.argoproj.io/secret-type=cluster, stringData {name: in-cluster,
+     server: <EKS CLUSTER ARN>, project: default}. MUST use the ARN, not the
+     k8s API URL.
+  2. K8s RBAC for the ArgoCD capability role (access entry auto-created but has
+     NO rbac by default). Quick start: associate AmazonEKSClusterAdminPolicy to
+     the capability role principal (aws eks associate-access-policy
+     --access-scope type=cluster), or least-privilege ClusterRole(read-all) +
+     per-namespace Role bound to group
+     "eks-access-entry:<capabilityRoleArn>".
+- => Implement in ArgoCdStack: add the cluster Secret (KubernetesManifest) +
+  grantAccess(capabilityRole, AmazonEKSClusterAdminPolicy) so the ApplicationSet
+  destination name=in-cluster resolves. Then Keycloak/Backstage sync.
+- Docs: eks/latest/userguide/argocd-register-clusters.html

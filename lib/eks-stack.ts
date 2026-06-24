@@ -119,6 +119,89 @@ export class EksStack extends cdk.Stack {
       amiType: eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
     });
 
+    // Core EKS-managed add-ons. The base cluster ships CNI/CoreDNS/kube-proxy
+    // as self-managed pods; declaring them as managed add-ons lets EKS own
+    // their versioning and patching. The Pod Identity agent is added so add-ons
+    // can get IAM credentials via Pod Identity. Versions are omitted so EKS
+    // uses the default for the cluster's Kubernetes version. OVERWRITE adopts
+    // the existing self-managed installs of CNI/CoreDNS/kube-proxy.
+    const coreAddons: { id: string; name: string }[] = [
+      { id: "VpcCniAddon", name: "vpc-cni" },
+      { id: "CoreDnsAddon", name: "coredns" },
+      { id: "KubeProxyAddon", name: "kube-proxy" },
+      // Pod Identity agent must exist before add-ons that use Pod Identity for
+      // credentials (the EBS CSI driver below).
+      { id: "PodIdentityAddon", name: "eks-pod-identity-agent" },
+    ];
+    let podIdentityAddon: eks.CfnAddon | undefined;
+    for (const addon of coreAddons) {
+      const a = new eks.CfnAddon(this, addon.id, {
+        clusterName: this.cluster.clusterName,
+        addonName: addon.name,
+        resolveConflicts: "OVERWRITE",
+      });
+      if (addon.name === "eks-pod-identity-agent") podIdentityAddon = a;
+    }
+
+    // EBS CSI driver — required for dynamically provisioned PersistentVolumes
+    // (e.g. the Keycloak Postgres data volume); without it PVCs stay Pending.
+    //
+    // The driver's controller runs in the AWS control plane path and cannot
+    // reach the node IMDS for credentials, so it is given its own IAM role via
+    // EKS Pod Identity (not the node role). The role is assumed by the
+    // ebs-csi-controller-sa service account.
+    const ebsCsiRole = new iam.Role(this, "EbsCsiDriverRole", {
+      roleName: `${config.prefix}-ebs-csi-driver-role`,
+      assumedBy: new iam.ServicePrincipal("pods.eks.amazonaws.com"),
+      description: "Role for the EBS CSI driver via EKS Pod Identity",
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AmazonEBSCSIDriverPolicy",
+        ),
+      ],
+    });
+    // Pod Identity trust requires both sts:AssumeRole and sts:TagSession.
+    (ebsCsiRole.assumeRolePolicy as iam.PolicyDocument).addStatements(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal("pods.eks.amazonaws.com")],
+        actions: ["sts:TagSession"],
+      }),
+    );
+
+    const ebsCsiAddon = new eks.CfnAddon(this, "EbsCsiAddon", {
+      clusterName: this.cluster.clusterName,
+      addonName: "aws-ebs-csi-driver",
+      resolveConflicts: "OVERWRITE",
+      podIdentityAssociations: [
+        {
+          serviceAccount: "ebs-csi-controller-sa",
+          roleArn: ebsCsiRole.roleArn,
+        },
+      ],
+    });
+    // Ensure the Pod Identity agent exists before the EBS CSI driver uses it.
+    if (podIdentityAddon) {
+      ebsCsiAddon.node.addDependency(podIdentityAddon);
+    }
+
+    // Default gp3 storage class so PVCs without an explicit storageClassName
+    // bind via the EBS CSI driver. The cluster's built-in gp2 class uses the
+    // older in-tree provisioner and is not marked default; gp3 is cheaper and
+    // faster, so we make it the default.
+    this.cluster.addManifest("Gp3DefaultStorageClass", {
+      apiVersion: "storage.k8s.io/v1",
+      kind: "StorageClass",
+      metadata: {
+        name: "gp3",
+        annotations: { "storageclass.kubernetes.io/is-default-class": "true" },
+      },
+      provisioner: "ebs.csi.aws.com",
+      volumeBindingMode: "WaitForFirstConsumer",
+      allowVolumeExpansion: true,
+      parameters: { type: "gp3", encrypted: "true" },
+    });
+
     // Grant cluster-admin to the configured IAM principal via an access entry,
     // so it can run kubectl. Without this, only CDK's internal creation role
     // has access and the deploying user cannot reach the cluster.

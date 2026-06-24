@@ -31,7 +31,7 @@ export const config = {
   gitops: {
     repoUrl:
       process.env.CDK_GITOPS_REPO_URL ??
-      "https://github.com/REPLACE_ME/eks-platform-cdk",
+      "https://github.com/patel0ankur/eks-platform-cdk",
     /** Git branch/tag/commit ArgoCD tracks. */
     revision: "main",
   },
