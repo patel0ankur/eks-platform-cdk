@@ -182,7 +182,7 @@ index abb34f2..89021b8 100644
    themes: [cnoeVibrantLightAppTheme, cnoeVibrantDarkAppTheme],
    components: {
      SignInPage: props => {
--      return <SignInPage {...props} auto providers={['guest']} />;
+-      return <SignInPage {...props} providers={['guest']} />;
 +      return <SignInPage {...props} providers={[{ id: 'keycloak-oidc', title: 'Keycloak', message: 'Sign in with Keycloak SSO', apiRef: keycloakOIDCAuthApiRef }]} />;
      },
    },

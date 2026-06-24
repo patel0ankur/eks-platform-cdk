@@ -11,10 +11,14 @@ FROM node:22-bookworm-slim AS source
 RUN apt-get update && apt-get install -y --no-install-recommends git patch ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-RUN git clone --depth 1 https://github.com/cnoe-io/backstage-app.git .
+# Full clone (not --depth 1) so the patch's base blob objects are reachable for
+# a 3-way merge — upstream main drifts, so a plain `patch` fails when context
+# lines move. `git apply --3way` merges using the blob hashes in the patch and
+# tolerates surrounding changes.
+RUN git clone https://github.com/cnoe-io/backstage-app.git .
 
 COPY patches/cnoe-customizations.patch /tmp/
-RUN patch -p1 < /tmp/cnoe-customizations.patch
+RUN git apply --3way --whitespace=nowarn /tmp/cnoe-customizations.patch
 
 # Stage 2: Install and build (mirrors CNOE Dockerfile)
 FROM node:22-bookworm-slim AS build
