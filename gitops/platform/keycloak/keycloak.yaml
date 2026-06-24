@@ -131,8 +131,12 @@ spec:
       targetPort: 8080
 ---
 # ALB Ingress for Keycloak, served at /keycloak. Uses the shared ALB ingress
-# group "idp" so Keycloak and Backstage share one load balancer. internet-facing
-# + HTTP for a workshop/dev setup; add ACM cert annotations for HTTPS in prod.
+# group "idp" so Keycloak and Backstage share one load balancer. HTTPS via ACM;
+# HTTP is redirected to HTTPS.
+#
+# PREREQUISITE for public users: replace the certificate-arn with an ACM cert
+# for your own domain (see config.domain). The ALB group annotations must match
+# Backstage's so they share one load balancer.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -142,7 +146,12 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/group.name: idp
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    # No certificate-arn here: the controller auto-discovers the ACM cert that
+    # matches the Ingress host rule below. (Keeps the account-specific ARN out
+    # of git — just have an ACM cert covering your domain.)
+    # Redirect all HTTP to HTTPS.
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
     # Keycloak's /health is on the management port (9000), not the traffic port,
     # so health-check a path Keycloak serves 200 on port 8080.
     alb.ingress.kubernetes.io/healthcheck-path: /keycloak/realms/master
@@ -150,7 +159,10 @@ metadata:
 spec:
   ingressClassName: alb
   rules:
-    - http:
+    # PREREQUISITE: set this host to your platform domain (config.domain). The
+    # controller selects the ACM cert that matches it for the HTTPS listener.
+    - host: patelax.people.aws.dev
+      http:
         paths:
           - path: /keycloak
             pathType: Prefix
