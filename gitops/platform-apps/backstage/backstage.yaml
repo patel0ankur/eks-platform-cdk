@@ -26,11 +26,15 @@ data:
   # values win. Backstage deep-merges configs; later files override earlier.
   app-config.extra.yaml: |
     app:
-      # Public URL of the portal (served under /backstage behind the ALB).
+      # The frontend (static app) is served under /backstage behind the ALB.
       baseUrl: https://patelax.people.aws.dev/backstage
     backend:
-      baseUrl: https://patelax.people.aws.dev/backstage
-      # Browser origin allowed to call the backend (same host).
+      # The backend mounts its API at /api at the ROOT of the host (it does not
+      # honor a sub-path), so backend.baseUrl is the bare host. The ALB routes
+      # /api to this service (see ingress.yaml). The frontend reads this value
+      # to locate the API, so it calls https://<host>/api/... directly.
+      baseUrl: https://patelax.people.aws.dev
+      # Browser origin allowed to call the backend (same host; path-agnostic).
       cors:
         origin: https://patelax.people.aws.dev
     auth:

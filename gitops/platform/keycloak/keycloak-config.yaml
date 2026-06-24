@@ -59,7 +59,7 @@ data:
       "frontchannelLogout": true,
       "rootUrl": "https://DOMAIN_PLACEHOLDER/backstage",
       "redirectUris": [
-        "https://DOMAIN_PLACEHOLDER/backstage/api/auth/keycloak-oidc/handler/frame"
+        "https://DOMAIN_PLACEHOLDER/api/auth/keycloak-oidc/handler/frame"
       ],
       "webOrigins": ["/*"]
     }
@@ -99,6 +99,11 @@ data:
     # Look up the client id and read its generated secret.
     CID=$(curl -sf "${auth[@]}" "$KC/admin/realms/$REALM/clients?clientId=backstage" \
       | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+
+    # Update the existing client so re-runs converge its config (e.g. redirect
+    # URIs) — the create above is a no-op once the client exists.
+    curl -s "${auth[@]}" -X PUT "$KC/admin/realms/$REALM/clients/$CID" \
+      -H "Content-Type: application/json" -d @/tmp/client.json >/dev/null || true
     SECRET=$(curl -sf "${auth[@]}" "$KC/admin/realms/$REALM/clients/$CID/client-secret" \
       | sed -n 's/.*"value":"\([^"]*\)".*/\1/p')
 

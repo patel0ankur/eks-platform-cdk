@@ -30,7 +30,18 @@ spec:
     - host: patelax.people.aws.dev
       http:
         paths:
+          # The static frontend.
           - path: /backstage
+            pathType: Prefix
+            backend:
+              service:
+                name: backstage
+                port:
+                  number: 80
+          # The backend API. Backstage mounts its API at /api at the root of
+          # the host (it doesn't honor a sub-path), so the frontend calls
+          # /api/... directly. Both paths target the same Service/pod.
+          - path: /api
             pathType: Prefix
             backend:
               service:
