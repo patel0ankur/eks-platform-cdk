@@ -110,6 +110,22 @@ CORRECTED findings (avoid repeating mistakes):
   setup from git. Caveat: ArgoCD git-generator requeue (~3 min, no webhook) means
   changes to gitops/platform/* take a few minutes to reflect.
 
+## Backstage 8a: image build — DONE (2026-06-24)
+
+- Vendored backstage/ build context (Dockerfile + patches/cnoe-customizations.patch)
+  into this repo. BackstageBuildStack (idp-backstage-build): ECR repo idp-backstage,
+  CodeBuild idp-backstage-builder (LARGE, privileged) building src/backstage from
+  this GitHub repo, + Lambda custom-resource auto-trigger. Image idp-backstage:latest
+  in ECR (~446MB).
+- BUG FIXED (the reference's, not ours): Dockerfile cloned cnoe-io/backstage-app@main
+  UNPINNED and the patch had drifted vs upstream -> `patch -p1` failed. Fix: full
+  clone + `git apply --3way --whitespace=nowarn`, and corrected the App.tsx hunk
+  (upstream dropped `auto` from the guest SignInPage line). All 7 files apply cleanly.
+- FUTURE HARDENING: pin CNOE to a specific commit in the Dockerfile so the build is
+  fully reproducible (building @main is still fragile to future upstream rewrites).
+
+## Backstage remaining: 8b ingress (ALB), 8c Keycloak realm+OIDC client, 8d deploy Backstage GitOps wired to Keycloak OIDC.
+
 ## Access / ingress — TODO (needed for Backstage)
 
 Keycloak Service is ClusterIP only (no ingress/LB). Access today via
