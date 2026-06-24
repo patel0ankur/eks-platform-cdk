@@ -110,9 +110,10 @@ data:
     # Write the client secret into a k8s Secret for Backstage to consume.
     # Backstage runs in its own namespace, so publish the secret there (a pod
     # can only read Secrets in its own namespace). Ensure the namespace exists
-    # first so this works even if Backstage hasn't been deployed yet.
-    kubectl create namespace backstage \
-      --dry-run=client -o yaml | kubectl apply -f -
+    # first so this works even if Backstage hasn't been deployed yet. Use a
+    # get-or-create so we never patch an existing namespace (which would need
+    # broader RBAC than this Job has).
+    kubectl get namespace backstage >/dev/null 2>&1 || kubectl create namespace backstage
     kubectl create secret generic keycloak-clients -n backstage \
       --from-literal=BACKSTAGE_CLIENT_SECRET="$SECRET" \
       --dry-run=client -o yaml | kubectl apply -f -
