@@ -62,7 +62,9 @@ data:
   configure.sh: |
     #!/usr/bin/env bash
     set -euo pipefail
-    KC=http://keycloak.keycloak.svc
+    # Keycloak serves under /keycloak (KC_HTTP_RELATIVE_PATH), so all admin API
+    # and realm paths are under that prefix.
+    KC=http://keycloak.keycloak.svc/keycloak
     REALM=backstage
 
     echo "Waiting for Keycloak to be ready..."
