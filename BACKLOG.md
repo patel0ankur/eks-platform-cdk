@@ -133,3 +133,13 @@ Keycloak Service is ClusterIP only (no ingress/LB). Access today via
 (user admin, password in SM idp/keycloak/admin). Backstage needs Keycloak at a
 stable URL for OIDC redirects, so add an ingress layer (AWS Load Balancer
 Controller + Ingress, or ingress-nginx) before/with Backstage.
+
+## 8b ingress (AWS Load Balancer Controller) — DONE (2026-06-24)
+- Single CDK-applied ArgoCD Application (IngressStack), NOT via directory ApplicationSet.
+  Helm-based platform infra pattern: one CDK-applied Application, no directory-app wrapper.
+- IAM: official LBC iam_policy.json (lib/policies/) via Pod Identity (kube-system/
+  aws-load-balancer-controller SA). Helm values clusterName+region+vpcId explicit (portable).
+- ROOT-CAUSE FIX: EKS node IMDS hop limit default=1 blocks pods from metadata (broke LBC + EBS CSI).
+  Added launch template hopLimit=2. NOTE: LT only attaches at nodegroup CREATION → had to replace
+  the nodegroup (renamed construct id + nodegroupName idp-nodes-lt).
+- ingress-nginx is RETIRED (archived Mar 2026) — chose LBC/ALB instead.
