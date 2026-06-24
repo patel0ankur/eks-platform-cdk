@@ -11,27 +11,31 @@ metadata:
   name: keycloak-config
   namespace: keycloak
 ---
+# ClusterRole (not a namespaced Role): the Job writes the harvested OIDC client
+# secret into the `backstage` namespace and ensures that namespace exists, so it
+# needs secret + namespace permissions beyond its own namespace.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: keycloak-config
-  namespace: keycloak
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: keycloak-config
-  namespace: keycloak
 subjects:
   - kind: ServiceAccount
     name: keycloak-config
     namespace: keycloak
 roleRef:
-  kind: Role
+  kind: ClusterRole
   name: keycloak-config
   apiGroup: rbac.authorization.k8s.io
 ---
@@ -104,7 +108,12 @@ data:
       -d "{\"username\":\"developer\",\"enabled\":true,\"email\":\"developer@example.com\",\"emailVerified\":true,\"firstName\":\"Dev\",\"lastName\":\"User\",\"credentials\":[{\"type\":\"password\",\"value\":\"${DEVELOPER_PASSWORD}\",\"temporary\":false}]}" >/dev/null || true
 
     # Write the client secret into a k8s Secret for Backstage to consume.
-    kubectl create secret generic keycloak-clients -n keycloak \
+    # Backstage runs in its own namespace, so publish the secret there (a pod
+    # can only read Secrets in its own namespace). Ensure the namespace exists
+    # first so this works even if Backstage hasn't been deployed yet.
+    kubectl create namespace backstage \
+      --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create secret generic keycloak-clients -n backstage \
       --from-literal=BACKSTAGE_CLIENT_SECRET="$SECRET" \
       --dry-run=client -o yaml | kubectl apply -f -
 

@@ -1,0 +1,169 @@
+# Backstage developer portal.
+#
+# The container image is the one built by CodeBuild into ECR (idp-backstage).
+# The manifest references the image by the placeholder name "backstage-image";
+# the ArgoCD Application (defined in CDK, BackstageDeployStack) rewrites that to
+# the real ECR URI via a Kustomize image override. This keeps the
+# account-specific ECR registry out of git.
+#
+# Two values are baked wrong for our environment in the upstream image and are
+# corrected by the layered app-config below (mounted at /config):
+#   - baseUrl was localhost -> set to the public https://<domain>/backstage
+#   - the Keycloak OIDC metadataUrl pointed at the upstream demo realm -> set to
+#     our realm's discovery URL.
+#
+# Secrets come from Kubernetes Secrets (never from git):
+#   - backstage-postgres : DB password, synced from Secrets Manager (CSI).
+#   - keycloak-clients   : the OIDC client secret, published into this namespace
+#                          by Keycloak's configuration Job.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-app-config
+  namespace: backstage
+data:
+  # Layered last (after app-config.yaml + app-config.production.yaml), so these
+  # values win. Backstage deep-merges configs; later files override earlier.
+  app-config.extra.yaml: |
+    app:
+      # Public URL of the portal (served under /backstage behind the ALB).
+      baseUrl: https://patelax.people.aws.dev/backstage
+    backend:
+      baseUrl: https://patelax.people.aws.dev/backstage
+      # Browser origin allowed to call the backend (same host).
+      cors:
+        origin: https://patelax.people.aws.dev
+    auth:
+      # The keycloak-oidc provider is registered under the "development" key in
+      # the image's app-config; keep that environment selected.
+      environment: development
+      providers:
+        keycloak-oidc:
+          development:
+            # OIDC discovery for OUR Keycloak realm (overrides the upstream
+            # demo URL baked into the image).
+            metadataUrl: https://patelax.people.aws.dev/keycloak/realms/backstage/.well-known/openid-configuration
+            clientId: backstage
+            clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+            prompt: auto
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: backstage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backstage
+  template:
+    metadata:
+      labels:
+        app: backstage
+    spec:
+      serviceAccountName: backstage
+      # No Kubernetes API access is needed for this first deployment (the portal
+      # runs with mock integrations, see MOCK_MODE below). Not mounting the SA
+      # token keeps the backend's optional in-cluster plugins disabled, so it
+      # boots cleanly without extra cluster RBAC. Real cluster/scaffolder
+      # integration is a later step.
+      automountServiceAccountToken: false
+      # Wait for Postgres to accept connections so a fresh deploy doesn't
+      # crash-loop while the database comes up.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for postgres.backstage.svc:5432..."
+              until nc -z postgres.backstage.svc 5432; do sleep 3; done
+              echo "Postgres is reachable."
+      containers:
+        - name: backstage
+          image: backstage-image
+          # Append our override config to the image's default config chain.
+          command: ["node", "packages/backend"]
+          args:
+            - "--config"
+            - "app-config.yaml"
+            - "--config"
+            - "app-config.production.yaml"
+            - "--config"
+            - "/config/app-config.extra.yaml"
+          env:
+            # Database (the production config reads these). Host is the in-namespace
+            # Postgres Service; the password comes from the CSI-synced Secret.
+            - name: POSTGRES_HOST
+              value: postgres.backstage.svc
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: backstage
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-postgres
+                  key: POSTGRES_PASSWORD
+            # Presence of KEYCLOAK_URL is what enables the OIDC provider in the
+            # backend; the actual connection uses the metadataUrl in app-config.
+            - name: KEYCLOAK_URL
+              value: https://patelax.people.aws.dev/keycloak
+            # The OIDC client secret harvested by Keycloak's config Job.
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-clients
+                  key: BACKSTAGE_CLIENT_SECRET
+            # Use the bundled mock integrations (proxy, kubernetes, terraform,
+            # argocd) so the portal boots without external service config.
+            # Authentication via Keycloak is independent of this and stays real.
+            - name: MOCK_MODE
+              value: "true"
+            - name: NODE_ENV
+              value: production
+          ports:
+            - name: http
+              containerPort: 7007
+          volumeMounts:
+            - name: app-config
+              mountPath: /config
+              readOnly: true
+          # The backend serves the frontend under /backstage on 7007. A TCP
+          # probe avoids depending on a specific health path while it warms up.
+          readinessProbe:
+            tcpSocket:
+              port: 7007
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: 7007
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: app-config
+          configMap:
+            name: backstage-app-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage
+  namespace: backstage
+spec:
+  selector:
+    app: backstage
+  ports:
+    - name: http
+      port: 80
+      targetPort: 7007
