@@ -93,19 +93,19 @@ spec:
             - name: secrets-store
               mountPath: /mnt/secrets-store
               readOnly: true
-          # The management interface (port 9000) serves health at ROOT and does
-          # NOT honor KC_HTTP_RELATIVE_PATH (that only affects the 8080 HTTP
-          # listener). So probes stay at /health/*.
+          # With KC_HTTP_RELATIVE_PATH=/keycloak, the management interface
+          # (port 9000) also serves health under the prefix (verified on 26.3.3:
+          # /keycloak/health/live = 200, /health/live = 404).
           readinessProbe:
             httpGet:
-              path: /health/ready
+              path: /keycloak/health/ready
               port: 9000
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /health/live
+              path: /keycloak/health/live
               port: 9000
             initialDelaySeconds: 60
             periodSeconds: 15
