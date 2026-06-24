@@ -124,7 +124,49 @@ CORRECTED findings (avoid repeating mistakes):
 - FUTURE HARDENING: pin CNOE to a specific commit in the Dockerfile so the build is
   fully reproducible (building @main is still fragile to future upstream rewrites).
 
-## Backstage remaining: 8b ingress (ALB), 8c Keycloak realm+OIDC client, 8d deploy Backstage GitOps wired to Keycloak OIDC.
+## Backstage remaining: ✅ 8b ingress (ALB), ✅ 8c Keycloak realm+OIDC client, ✅ 8d deploy Backstage GitOps wired to Keycloak OIDC. (8e real cluster integration deferred — see below.)
+
+## 8d deploy Backstage (GitOps + Keycloak SSO) — DONE (2026-06-24)
+End-to-end verified: https://patelax.people.aws.dev/backstage -> 200; the Sign-in
+button starts OIDC at /api/auth/keycloak-oidc/start -> 302 -> Keycloak login page
+("Sign in to backstage", redirect_uri accepted).
+
+What shipped:
+- Manifests in `gitops/platform-apps/backstage/` (deliberately NOT under
+  gitops/platform/* so the directory-ApplicationSet generator doesn't apply the
+  raw image placeholder): namespace, secret-provider (SAs + SPC for the DB
+  password), postgres (StatefulSet, SM password via CSI), backstage (Deployment +
+  Service + app-config.extra ConfigMap), ingress, kustomization.
+- Deployed as ONE CDK-applied ArgoCD Application (lib/backstage-deploy-stack.ts,
+  idp-backstage-deploy): renders the dir with Kustomize and injects the ECR image
+  URI via spec.source.kustomize.images ["backstage-image=<ecr>:latest"] — keeps
+  the account-specific registry OUT of git (same rationale as the ACM ARN).
+- SecretsStack: added SM secret idp/backstage/postgres + Pod Identity assoc for
+  backstage/postgres SA (existing reader role covers idp/*; existing keycloak
+  assoc construct ids kept stable so nothing got replaced).
+- keycloak-config Job now publishes keycloak-clients into the BACKSTAGE namespace
+  (ClusterRole; get-or-create the ns; PUTs the client so re-runs converge
+  redirect_uri).
+
+Gotchas hit + fixed (CNOE backstage-app image):
+- OIDC provider gated on env KEYCLOAK_URL; the baked metadataUrl points at
+  cnoe.localtest.me (HARDCODED) — overridden via a layered 3rd --config file.
+- MOCK_MODE=true CRASHES the prod image (mock plugins read fixture JSONs absent
+  from the build) -> run real mode + automountServiceAccountToken:false so the
+  backend skips k8s/kro/argocd and boots clean.
+- BACKSTAGE SUBPATH LIMIT: the backend serves its API at ROOT /api, not under
+  /backstage; AWS LBC can't rewrite paths. Chosen single-domain fix: backend.baseUrl
+  = bare host, add Ingress path /api -> backstage Service, OIDC redirect_uri at
+  /api/auth/.../handler/frame. app.baseUrl stays /backstage. (User chose this over
+  a dedicated subdomain to keep the public-repo prereq at one domain + one cert.)
+- ConfigMap change doesn't restart the pod -> rollout restart; new Ingress path
+  needs ~45s for the ALB target rule.
+
+## 8e (deferred): Backstage real cluster integration
+Mount the SA token + provide real config for the kubernetes/kro/argocd/terraform
+backends (currently skipped), TechDocs storage, catalog seeding, scaffolder
+templates. The portal is up now with working Keycloak SSO; this enables the
+self-service/scaffolding features.
 
 ## Access / ingress — TODO (needed for Backstage)
 
