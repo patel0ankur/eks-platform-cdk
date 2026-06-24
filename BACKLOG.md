@@ -74,26 +74,46 @@ Cluster registration (CORRECTED 2026-06-24 — earlier assumption was WRONG):
   destination name=in-cluster resolves. Then Keycloak/Backstage sync.
 - Docs: eks/latest/userguide/argocd-register-clusters.html
 
-## Secrets: AWS Secrets Manager via Secrets Store CSI Driver (chosen path)
+## Secrets: AWS Secrets Manager via Secrets Store CSI Driver — DONE (2026-06-24)
 
-Decision: use the AWS Secrets Store CSI Driver (managed-addon provider + core
-driver) instead of ESO, to keep secrets out of git. All facts verified upstream
-2026-06-24 (no first-boot race — the synced k8s Secret is created during volume
-mount, before the container starts).
+Keycloak admin + Postgres passwords now sourced from AWS Secrets Manager; NO
+plaintext in git. Verified end-to-end (synced k8s Secret value matches the
+SM-generated 24-char password; Keycloak connects).
 
-Components:
-- CDK: generate passwords in Secrets Manager (idp/keycloak/admin, idp/keycloak/
-  postgres); Pod Identity role (pods.eks.amazonaws.com, AssumeRole+TagSession)
-  with secretsmanager:GetSecretValue/DescribeSecret on idp/*; associate that
-  role to the WORKLOAD service accounts (keycloak, postgres) — ASCP assumes the
-  consuming pod's identity. Add EKS addon aws-secrets-store-csi-driver-provider.
-- GitOps gitops/platform/secrets-store-csi/: core driver via Helm with
-  syncSecret.enabled=true (OFF by default — required for secretObjects).
-- GitOps keycloak ns: ServiceAccounts (keycloak, postgres); SecretProviderClass
-  per workload with usePodIdentity:"true" + secretObjects to sync a k8s Secret;
-  add CSI volume + volumeMount to keycloak Deployment and postgres StatefulSet;
-  env vars read from the synced Secret. Remove hardcoded placeholder passwords.
-- Caveat: synced Secret lifecycle is tied to a mounting pod (deleted when all
-  consuming pods are gone) — fine in steady state.
-- syncSecret flag confirmed: secrets-store-csi-driver helm value
-  syncSecret.enabled=true. Provider addon does NOT bundle core driver here.
+What shipped:
+- CDK SecretsStack (idp-secrets): generates SM secrets idp/keycloak/admin and
+  idp/keycloak/postgres; a Pod Identity reader role (pods.eks.amazonaws.com,
+  AssumeRole+TagSession, secretsmanager Get/Describe on idp/*) associated to the
+  WORKLOAD SAs (keycloak, postgres); the EKS addon
+  aws-secrets-store-csi-driver-provider with configurationValues enabling
+  secrets-store-csi-driver.syncSecret.enabled + enableSecretRotation.
+- GitOps gitops/platform/keycloak: ServiceAccounts (keycloak, postgres);
+  SecretProviderClass per workload (usePodIdentity:"true" + secretObjects to
+  sync a k8s Secret); CSI volume mount on keycloak Deployment + postgres
+  StatefulSet; env from synced Secrets. Hardcoded passwords removed.
+
+CORRECTED findings (avoid repeating mistakes):
+- The aws-secrets-store-csi-driver-provider ADDON BUNDLES the core driver — do
+  NOT install the core driver separately via Helm (removed that redundant app).
+- syncSecret is configured via the ADDON's configurationValues, not a separate
+  Helm release.
+- A token-request ClusterRole (serviceaccounts/token: create) is NOT needed —
+  empirically verified mount+sync work without it because the CSIDriver's
+  tokenRequests (set by the addon) already includes the pods.eks.amazonaws.com
+  audience. Earlier mount failures were driver reconciliation lag after enabling
+  syncSecret, not missing RBAC. (Removed that ClusterRole + its app.)
+- Migration gotcha (one-time, not on fresh deploy): switching Postgres password
+  source from a hardcoded value to SM requires a FRESH PVC — POSTGRES_PASSWORD
+  is only applied on first init of an empty data dir; a stale PVC keeps the old
+  password and causes auth failures.
+- Reproducibility verified: cdk diff idp-secrets = 0 drift; GitOps recreates the
+  setup from git. Caveat: ArgoCD git-generator requeue (~3 min, no webhook) means
+  changes to gitops/platform/* take a few minutes to reflect.
+
+## Access / ingress — TODO (needed for Backstage)
+
+Keycloak Service is ClusterIP only (no ingress/LB). Access today via
+`kubectl port-forward -n keycloak svc/keycloak 8080:80` -> http://localhost:8080
+(user admin, password in SM idp/keycloak/admin). Backstage needs Keycloak at a
+stable URL for OIDC redirects, so add an ingress layer (AWS Load Balancer
+Controller + Ingress, or ingress-nginx) before/with Backstage.
