@@ -1,39 +1,7 @@
-diff --git a/app-config.production.yaml b/app-config.production.yaml
-index aaa0431..98b3451 100644
---- a/app-config.production.yaml
-+++ b/app-config.production.yaml
-@@ -1,8 +1,8 @@
- app:
--  baseUrl: http://localhost:7007
-+  baseUrl: http://localhost:7007/backstage
- 
- backend:
--  baseUrl: http://localhost:7007
-+  baseUrl: http://localhost:7007/backstage
-   listen: ':7007'
-   database:
-     client: pg
 diff --git a/app-config.yaml b/app-config.yaml
 index d8b8e47..86ce1c8 100644
 --- a/app-config.yaml
 +++ b/app-config.yaml
-@@ -1,6 +1,6 @@
- app:
-   title: CNOE
--  baseUrl: http://localhost:3000
-+  baseUrl: http://localhost:3000/backstage
-   packages: all
-   listen:
-     port: 3000
-@@ -37,7 +37,7 @@ backend:
-   # auth:
-   #   keys:
-   #     - secret: ${BACKEND_SECRET}
--  baseUrl: http://localhost:7007
-+  baseUrl: http://localhost:7007/backstage
-   listen:
-     port: 7007
-     host: 0.0.0.0
 @@ -91,11 +91,10 @@ techdocs:
  
  auth:
