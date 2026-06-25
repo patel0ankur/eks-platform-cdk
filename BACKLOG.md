@@ -126,10 +126,10 @@ CORRECTED findings (avoid repeating mistakes):
 
 ## Backstage remaining: ✅ 8b ingress (ALB), ✅ 8c Keycloak realm+OIDC client, ✅ 8d deploy Backstage GitOps wired to Keycloak OIDC. (8e real cluster integration deferred — see below.)
 
-## 8d deploy Backstage (GitOps + Keycloak SSO) — DONE (2026-06-24)
-End-to-end verified: https://patelax.people.aws.dev/backstage -> 200; the Sign-in
-button starts OIDC at /api/auth/keycloak-oidc/start -> 302 -> Keycloak login page
-("Sign in to backstage", redirect_uri accepted).
+## 8d deploy Backstage (GitOps + Keycloak SSO) — DONE, LOGIN CONFIRMED (2026-06-25)
+End-to-end verified + user logged in: Backstage at https://patelax.people.aws.dev/
+(ROOT of shared domain), Keycloak at /keycloak on the same ALB. Sign in with
+Keycloak SSO works (test user developer/developer in realm backstage).
 
 What shipped:
 - Manifests in `gitops/platform-apps/backstage/` (deliberately NOT under
@@ -140,13 +140,22 @@ What shipped:
 - Deployed as ONE CDK-applied ArgoCD Application (lib/backstage-deploy-stack.ts,
   idp-backstage-deploy): renders the dir with Kustomize and injects the ECR image
   URI via spec.source.kustomize.images ["backstage-image=<ecr>:latest"] — keeps
-  the account-specific registry OUT of git (same rationale as the ACM ARN).
+  the account-specific registry OUT of git.
 - SecretsStack: added SM secret idp/backstage/postgres + Pod Identity assoc for
   backstage/postgres SA (existing reader role covers idp/*; existing keycloak
   assoc construct ids kept stable so nothing got replaced).
-- keycloak-config Job now publishes keycloak-clients into the BACKSTAGE namespace
-  (ClusterRole; get-or-create the ns; PUTs the client so re-runs converge
-  redirect_uri).
+- keycloak-config Job now: publishes keycloak-clients into the BACKSTAGE namespace
+  (ClusterRole; get-or-create the ns); PUTs the client so re-runs converge
+  redirect_uri; creates the "groups" client scope + assigns it to the backstage
+  client (fixes OIDC invalid_scope).
+
+HOSTING DECISION (corrected): Backstage is served at the ROOT "/" of the shared
+domain, NOT under /backstage. Backstage cannot run under a sub-path on ALB. The
+reference repo uses /backstage only because it runs ingress-nginx with
+rewrite-target to strip the prefix; we use AWS LBC (no path rewrite) and
+ingress-nginx is RETIRED. So: Keycloak keeps /keycloak (supports a path prefix
+natively), Backstage owns "/". Same single domain + same existing cert — NO new
+subdomain/cert (account doesn't allow creating them).
 
 Gotchas hit + fixed (CNOE backstage-app image):
 - OIDC provider gated on env KEYCLOAK_URL; the baked metadataUrl points at
@@ -154,13 +163,18 @@ Gotchas hit + fixed (CNOE backstage-app image):
 - MOCK_MODE=true CRASHES the prod image (mock plugins read fixture JSONs absent
   from the build) -> run real mode + automountServiceAccountToken:false so the
   backend skips k8s/kro/argocd and boots clean.
-- BACKSTAGE SUBPATH LIMIT: the backend serves its API at ROOT /api, not under
-  /backstage; AWS LBC can't rewrite paths. Chosen single-domain fix: backend.baseUrl
-  = bare host, add Ingress path /api -> backstage Service, OIDC redirect_uri at
-  /api/auth/.../handler/frame. app.baseUrl stays /backstage. (User chose this over
-  a dedicated subdomain to keep the public-repo prereq at one domain + one cert.)
-- ConfigMap change doesn't restart the pod -> rollout restart; new Ingress path
-  needs ~45s for the ALB target rule.
+- BLANK SCREEN: image built with app.baseUrl=.../backstage bakes asset URLs to
+  /backstage/static/*, but app-backend hardcodes static mount at ROOT /static ->
+  assets 404 to SPA HTML -> JS won't execute. FIX: REBUILT image with root
+  app.baseUrl (removed the /backstage baseUrl hunks from the patch) so assets
+  bake to /static; host at root.
+- SHARED-ALB RULE ORDER: with Backstage "/" + Keycloak /keycloak on one ALB group,
+  set alb group.order keycloak=10 (first), backstage=100 (last) — else "/" (prio 1)
+  captures /keycloak/* and OIDC discovery returns Backstage HTML -> auth 500.
+- openid-client discovery is sticky -> rollout restart backstage after fixing routing.
+- OIDC invalid_scope (groups): fresh realm has no "groups" client scope -> Job
+  creates it + assigns to client (see above).
+- ConfigMap change doesn't restart the pod -> rollout restart; new ALB rule ~45s.
 
 ## 8e (deferred): Backstage real cluster integration
 Mount the SA token + provide real config for the kubernetes/kro/argocd/terraform
