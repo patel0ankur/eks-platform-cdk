@@ -100,6 +100,24 @@ data:
     CID=$(curl -sf "${auth[@]}" "$KC/admin/realms/$REALM/clients?clientId=backstage" \
       | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
 
+    # Backstage requests the "groups" scope (its sign-in resolver reads the
+    # groups claim), but a fresh realm has no such client scope, so Keycloak
+    # rejects the login with "invalid_scope". Create a "groups" client scope
+    # with a group-membership mapper, then attach it to the backstage client as
+    # a default scope so the claim is always issued. Both calls are idempotent
+    # (create is a no-op if it exists; PUT assignment is repeatable).
+    curl -s "${auth[@]}" -X POST "$KC/admin/realms/$REALM/client-scopes" \
+      -H "Content-Type: application/json" \
+      -d '{"name":"groups","protocol":"openid-connect","attributes":{"include.in.token.scope":"true","display.on.consent.screen":"false"},"protocolMappers":[{"name":"groups","protocol":"openid-connect","protocolMapper":"oidc-group-membership-mapper","config":{"claim.name":"groups","full.path":"false","id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}}]}' >/dev/null || true
+    GSID=$(curl -sf "${auth[@]}" "$KC/admin/realms/$REALM/client-scopes" \
+      | sed 's/},{"id"/}\n{"id"/g' \
+      | grep '"name":"groups"' | grep "oidc-group-membership-mapper" \
+      | sed -n 's/^{"id":"\([^"]*\)".*/\1/p' | head -1)
+    if [ -n "$GSID" ]; then
+      curl -s "${auth[@]}" -X PUT \
+        "$KC/admin/realms/$REALM/clients/$CID/default-client-scopes/$GSID" >/dev/null || true
+    fi
+
     # Update the existing client so re-runs converge its config (e.g. redirect
     # URIs) — the create above is a no-op once the client exists.
     curl -s "${auth[@]}" -X PUT "$KC/admin/realms/$REALM/clients/$CID" \
