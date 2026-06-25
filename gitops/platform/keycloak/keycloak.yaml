@@ -146,6 +146,11 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/group.name: idp
+    # Evaluate this Ingress's rules BEFORE Backstage's. Backstage owns the
+    # catch-all "/" on the same shared ALB; without an explicit order the ALB
+    # does not prefer the more specific /keycloak path, so /keycloak/* could be
+    # captured by "/". A lower group.order is evaluated first.
+    alb.ingress.kubernetes.io/group.order: "10"
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     # No certificate-arn here: the controller auto-discovers the ACM cert that
     # matches the Ingress host rule below. (Keeps the account-specific ARN out

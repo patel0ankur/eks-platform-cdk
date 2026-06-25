@@ -57,7 +57,7 @@ data:
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "frontchannelLogout": true,
-      "rootUrl": "https://DOMAIN_PLACEHOLDER/backstage",
+      "rootUrl": "https://DOMAIN_PLACEHOLDER",
       "redirectUris": [
         "https://DOMAIN_PLACEHOLDER/api/auth/keycloak-oidc/handler/frame"
       ],

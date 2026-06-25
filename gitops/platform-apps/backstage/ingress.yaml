@@ -1,11 +1,16 @@
-# ALB Ingress for Backstage, served at /backstage. Uses the SAME shared ALB
-# ingress group "idp" as Keycloak, so both share one load balancer (one DNS
-# name, one certificate). HTTPS via ACM; HTTP is redirected to HTTPS.
+# ALB Ingress for Backstage. Uses the SAME shared ALB ingress group "idp" as
+# Keycloak, so both share one load balancer (one DNS name, one certificate).
+# HTTPS via ACM; HTTP is redirected to HTTPS.
 #
-# PREREQUISITE for public users: set the host below to your platform domain
-# (config.domain) and have an ACM certificate covering it in this region — the
-# controller auto-discovers the cert that matches this host rule. The group
-# annotations MUST match Keycloak's so they share one load balancer.
+# Backstage is served at the ROOT ("/") of the shared host. Backstage does not
+# support being hosted under a sub-path, so it owns the root while Keycloak
+# sits under /keycloak (Keycloak supports a path prefix natively). The ALB
+# routes by path: the more specific /keycloak rule wins for Keycloak, and
+# everything else ("/") goes to Backstage.
+#
+# PREREQUISITE for public users: point your platform domain (config.domain) at
+# the ALB and have an ACM certificate covering it. The group annotations MUST
+# match Keycloak's so they share one load balancer.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -19,9 +24,8 @@ metadata:
     # No certificate-arn: the controller auto-discovers the ACM cert matching
     # the host rule below (keeps the account-specific ARN out of git).
     alb.ingress.kubernetes.io/ssl-redirect: "443"
-    # Backstage serves its frontend under /backstage and returns 200 at that
-    # path once it is up.
-    alb.ingress.kubernetes.io/healthcheck-path: /backstage
+    # Backstage returns 200 at the root once it is up.
+    alb.ingress.kubernetes.io/healthcheck-path: /
     alb.ingress.kubernetes.io/success-codes: "200"
 spec:
   ingressClassName: alb
@@ -30,18 +34,9 @@ spec:
     - host: patelax.people.aws.dev
       http:
         paths:
-          # The static frontend.
-          - path: /backstage
-            pathType: Prefix
-            backend:
-              service:
-                name: backstage
-                port:
-                  number: 80
-          # The backend API. Backstage mounts its API at /api at the root of
-          # the host (it doesn't honor a sub-path), so the frontend calls
-          # /api/... directly. Both paths target the same Service/pod.
-          - path: /api
+          # Backstage owns the root. Keycloak's Ingress (same ALB group) adds
+          # the more specific /keycloak rule, which the ALB evaluates first.
+          - path: /
             pathType: Prefix
             backend:
               service:

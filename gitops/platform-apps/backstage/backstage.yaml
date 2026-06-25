@@ -8,7 +8,7 @@
 #
 # Two values are baked wrong for our environment in the upstream image and are
 # corrected by the layered app-config below (mounted at /config):
-#   - baseUrl was localhost -> set to the public https://<domain>/backstage
+#   - baseUrl was localhost -> set to the public root URL https://<domain>
 #   - the Keycloak OIDC metadataUrl pointed at the upstream demo realm -> set to
 #     our realm's discovery URL.
 #
@@ -26,15 +26,16 @@ data:
   # values win. Backstage deep-merges configs; later files override earlier.
   app-config.extra.yaml: |
     app:
-      # The frontend (static app) is served under /backstage behind the ALB.
-      baseUrl: https://patelax.people.aws.dev/backstage
-    backend:
-      # The backend mounts its API at /api at the ROOT of the host (it does not
-      # honor a sub-path), so backend.baseUrl is the bare host. The ALB routes
-      # /api to this service (see ingress.yaml). The frontend reads this value
-      # to locate the API, so it calls https://<host>/api/... directly.
+      # Backstage is served at the ROOT of the shared platform host. Backstage
+      # does not support a sub-path, so it owns "/" while Keycloak sits under
+      # /keycloak. With a root baseUrl the frontend's static assets are baked
+      # to /static and the backend serves them and its /api there natively, so
+      # no path rewriting is needed (the AWS Load Balancer Controller cannot
+      # rewrite paths anyway).
       baseUrl: https://patelax.people.aws.dev
-      # Browser origin allowed to call the backend (same host; path-agnostic).
+    backend:
+      baseUrl: https://patelax.people.aws.dev
+      # Browser origin allowed to call the backend (same host).
       cors:
         origin: https://patelax.people.aws.dev
     auth:
