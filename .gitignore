@@ -1,6 +1,14 @@
 *.js
 !jest.config.js
 *.d.ts
+# Backstage plugin config schemas are hand-written source (not generated) and
+# MUST be committed — the backend embeds them and fails to start without them.
+!**/config.d.ts
+# Scaffolder template + example CONTENT is shipped source (the files a template
+# generates), including .js — these must be committed even though the repo-wide
+# *.js rule (for compiled CDK output) would otherwise ignore them.
+!backstage/templates/**
+!backstage/examples/**
 node_modules
 
 # CDK asset staging directory
