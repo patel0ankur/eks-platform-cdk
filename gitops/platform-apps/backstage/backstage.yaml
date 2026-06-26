@@ -38,9 +38,10 @@ data:
       # Browser origin allowed to call the backend (same host).
       cors:
         origin: https://patelax.people.aws.dev
-    # Use the redirect (non-popup) sign-in flow so SSO works cleanly behind the
-    # ALB without popup/cookie quirks.
-    enableExperimentalRedirectFlow: true
+    # NOTE: We use the DEFAULT popup sign-in flow. The experimental redirect flow
+    # (enableExperimentalRedirectFlow) requires server-side OIDC session state that
+    # was failing here ("req.session[oidc:...] is undefined"); the popup flow is
+    # verified working end-to-end.
     auth:
       environment: production
       # Session secret for the OIDC cookie flow (any stable random string).
