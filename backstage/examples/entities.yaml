@@ -23,9 +23,9 @@ metadata:
     # ArgoCD app name annotation so the ArgoCD tab/card can find the Application.
     argocd/app-name: example-website
     # Links this component to its AWS DevOps Agent Space (surfaces the "DevOps
-    # Agent" tab). In mock mode the id is arbitrary; with a real Agent Space set
-    # it to the actual space id.
-    aws-devops-agent/space-id: example-space
+    # Agent" tab). Set to the real "backstage" Agent Space in this account so the
+    # tab shows live recommendations/investigations for the platform.
+    aws-devops-agent/space-id: c222c1e4-2769-406a-bce3-96bee5be0b2a
 spec:
   type: website
   lifecycle: experimental

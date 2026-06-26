@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as eks from "aws-cdk-lib/aws-eks";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 import { config } from "./config";
 
@@ -69,6 +70,58 @@ export class BackstageDeployStack extends cdk.Stack {
       ],
     });
 
+    // --- AWS DevOps Agent access for the Backstage backend ---
+    // The DevOps Agent backend plugin (running as the `backstage` service
+    // account) calls the AWS DevOps Agent API (aidevops:*) to fetch
+    // recommendations/investigations and drive chat. Grant it read + chat
+    // access via EKS Pod Identity, so no AWS credentials live in the cluster.
+    const devOpsAgentRole = new iam.Role(this, "DevOpsAgentReaderRole", {
+      roleName: `${config.prefix}-backstage-devops-agent-role`,
+      assumedBy: new iam.ServicePrincipal("pods.eks.amazonaws.com"),
+      description:
+        "Lets the Backstage backend read AWS DevOps Agent spaces and chat",
+    });
+    // Pod Identity trust requires both sts:AssumeRole and sts:TagSession.
+    (devOpsAgentRole.assumeRolePolicy as iam.PolicyDocument).addStatements(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal("pods.eks.amazonaws.com")],
+        actions: ["sts:TagSession"],
+      }),
+    );
+    devOpsAgentRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "aidevops:ListAgentSpaces",
+          "aidevops:GetAgentSpace",
+          "aidevops:ListServices",
+          "aidevops:GetService",
+          "aidevops:ListRecommendations",
+          "aidevops:GetRecommendation",
+          "aidevops:ListBacklogTasks",
+          "aidevops:ListExecutions",
+          "aidevops:ListChats",
+          "aidevops:CreateChat",
+          "aidevops:SendMessage",
+          "aidevops:ListPendingMessages",
+        ],
+        // DevOps Agent is a new service; scope to agentspace resources in this
+        // account/region (some list actions also accept "*").
+        resources: ["*"],
+      }),
+    );
+
+    new eks.CfnPodIdentityAssociation(this, "BackstageDevOpsAgentPodIdentity", {
+      clusterName: props.cluster.clusterName,
+      namespace: "backstage",
+      serviceAccount: "backstage",
+      roleArn: devOpsAgentRole.roleArn,
+    });
+
     new cdk.CfnOutput(this, "BackstageImageUri", { value: imageUri });
+    new cdk.CfnOutput(this, "DevOpsAgentRoleArn", {
+      value: devOpsAgentRole.roleArn,
+    });
   }
 }

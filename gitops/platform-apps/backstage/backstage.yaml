@@ -68,8 +68,12 @@ data:
                 # Add catalog Users (examples/org.yaml) for each sign-in user.
                 - resolver: emailLocalPartMatchingUserEntityName
     devOpsAgent:
-      # AWS DevOps Agent plugin in mock mode (no Agent Space provisioned yet).
-      mock: true
+      # Live mode: the backend calls the real AWS DevOps Agent API using the
+      # Backstage pod's IAM role (EKS Pod Identity, granted in
+      # BackstageDeployStack). Components opt in via the aws-devops-agent/space-id
+      # annotation.
+      mock: false
+      region: us-east-1
     kubernetes:
       # Backstage reads workloads from THIS cluster (it runs inside it). The
       # 'config' locator with authProvider 'serviceAccount' and NO
