@@ -1,0 +1,27 @@
+# ArgoCD Application for ${{ values.name }}.
+#
+# Apply this once to the platform's ArgoCD (namespace argocd) to start syncing
+# the service. ArgoCD then watches the k8s/ directory in this repo and keeps the
+# Deployment/Service in sync — the same GitOps pattern the rest of the platform
+# uses. CreateNamespace=true provisions the service's own namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${{ values.name }}
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # The repository created for this service by the scaffolder.
+    repoURL: ${{ values.repoUrl }}
+    targetRevision: main
+    path: k8s
+  destination:
+    name: in-cluster
+    namespace: ${{ values.name }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -16,11 +16,12 @@ export interface BackstageBuildStackProps extends cdk.StackProps {
  * BackstageBuildStack — builds the Backstage container image and pushes it to
  * ECR, automatically on deploy.
  *
- * The build context is the `backstage/` folder in this repo (a Dockerfile that
- * clones upstream CNOE Backstage and applies a workshop patch). A multi-stage
- * build can take ~10-15 minutes, so a Lambda-backed custom resource starts the
- * build during deploy and does not wait for it — the image lands in ECR
- * asynchronously, where ArgoCD's Backstage Deployment pulls it.
+ * The build context is the `backstage/` folder in this repo — our own Backstage
+ * monorepo (scaffolded from @backstage/create-app, Apache-2.0) with a multi-stage
+ * Dockerfile that builds the app from source (no external clone). A build can
+ * take ~10-15 minutes, so a Lambda-backed custom resource starts the build
+ * during deploy and does not wait for it — the image lands in ECR asynchronously,
+ * where ArgoCD's Backstage Deployment pulls it.
  *
  * Creates:
  *   - An ECR repository for the Backstage image

@@ -1,77 +1,86 @@
-# Backstage image based on CNOE backstage-app with workshop-specific patches:
-# - /backstage sub-path support (baseUrl)
-# - GitLab scaffolder module
-# - kube:apply action alias with manifest input + in-cluster fallback
+# Multi-stage build for this Backstage app.
 #
-# To rebuild: docker build -t <ecr-repo>/backstage:latest backstage/
+# Unlike the host-build Dockerfile in packages/backend/Dockerfile (which expects
+# `yarn install && yarn tsc && yarn build:backend` to have run first), this one
+# builds everything INSIDE Docker, so CI only needs `docker build` against this
+# directory — no host pre-build step. The build context is this folder (the
+# Backstage monorepo root).
+#
+# Stage 1 installs deps + builds the backend bundle; stage 2 is a slim runtime
+# image that installs only production deps and runs the bundle.
 
-# Stage 1: Clone CNOE source and apply patches
-FROM node:22-bookworm-slim AS source
-
-RUN apt-get update && apt-get install -y --no-install-recommends git patch ca-certificates && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-# Full clone (not --depth 1) so the patch's base blob objects are reachable for
-# a 3-way merge — upstream main drifts, so a plain `patch` fails when context
-# lines move. `git apply --3way` merges using the blob hashes in the patch and
-# tolerates surrounding changes.
-RUN git clone https://github.com/cnoe-io/backstage-app.git .
-
-COPY patches/cnoe-customizations.patch /tmp/
-RUN git apply --3way --whitespace=nowarn /tmp/cnoe-customizations.patch
-
-# Stage 2: Install and build (mirrors CNOE Dockerfile)
+# ---------- Stage 1: build ----------
 FROM node:22-bookworm-slim AS build
 
-USER node
-WORKDIR /app
-
-COPY --from=source --chown=node:node /build/package.json /build/yarn.lock ./
-COPY --from=source --chown=node:node /build/packages packages
-COPY --from=source --chown=node:node /build/plugins plugins
-
-RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn install --frozen-lockfile --network-timeout 600000
-
-COPY --from=source --chown=node:node /build .
-
-RUN yarn tsc
-RUN yarn --cwd packages/backend build
-
-RUN mkdir packages/backend/dist/skeleton packages/backend/dist/bundle \
-    && tar xzf packages/backend/dist/skeleton.tar.gz -C packages/backend/dist/skeleton \
-    && tar xzf packages/backend/dist/bundle.tar.gz -C packages/backend/dist/bundle
-
-# Stage 3: Production image
-FROM node:22-bookworm-slim
-
+# Build deps: python3/g++ for native modules (isolated-vm via scaffolder,
+# better-sqlite3), plus build-essential.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    apt-get install -y --no-install-recommends python3 python3-pip python3-venv g++ build-essential ca-certificates curl
-
-RUN yarn config set python /usr/bin/python3
-
-# kubectl for kube:apply action
-RUN curl -L -o /usr/local/bin/kubectl https://dl.k8s.io/release/v1.29.9/bin/linux/amd64/kubectl && chmod +x /usr/local/bin/kubectl
-
-# mkdocs for TechDocs
-ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN pip3 install 'mkdocs-techdocs-core==1.4.2'
+    apt-get install -y --no-install-recommends python3 g++ build-essential libsqlite3-dev ca-certificates
 
 USER node
 WORKDIR /app
+ENV NODE_OPTIONS="--no-node-snapshot"
 
-COPY --from=build --chown=node:node /app/yarn.lock /app/package.json /app/packages/backend/dist/skeleton/ ./
+# Yarn 4 lives in .yarn/releases and is selected by .yarnrc.yml.
+COPY --chown=node:node .yarn ./.yarn
+COPY --chown=node:node .yarnrc.yml backstage.json package.json yarn.lock tsconfig.json ./
+
+# Workspace package.json files (so the dependency graph resolves) + sources.
+COPY --chown=node:node packages packages
+COPY --chown=node:node plugins plugins
 
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn install --frozen-lockfile --production --network-timeout 600000
+    yarn install --immutable --network-timeout 600000
 
-COPY --from=build --chown=node:node /app/packages/backend/dist/bundle/ ./
-COPY --from=source --chown=node:node /build/app-config.yaml /build/app-config.production.yaml ./
+# Type-check, then build + bundle the backend (produces skeleton.tar.gz +
+# bundle.tar.gz under packages/backend/dist).
+RUN yarn tsc
+RUN yarn build:backend
 
-ENV NODE_ENV production
+# ---------- Stage 2: runtime ----------
+FROM node:22-bookworm-slim
+
+ENV PYTHON=/usr/bin/python3
+
+# Runtime native-module build deps (scaffolder isolated-vm, better-sqlite3) +
+# python/venv for the TechDocs local generator (mkdocs).
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      python3 python3-pip python3-venv g++ build-essential libsqlite3-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# TechDocs (builder: local) generates docs with mkdocs at runtime.
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv "$VIRTUAL_ENV"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN pip3 install --no-cache-dir 'mkdocs-techdocs-core==1.4.2'
+
+USER node
+WORKDIR /app
+ENV NODE_ENV=production
 ENV NODE_OPTIONS="--no-node-snapshot"
+
+# Install production deps from the repo skeleton (package.json files only) so
+# this layer is cached unless dependencies change.
+COPY --from=build --chown=node:node /app/.yarn ./.yarn
+COPY --from=build --chown=node:node /app/.yarnrc.yml /app/backstage.json /app/yarn.lock /app/package.json /app/packages/backend/dist/skeleton.tar.gz ./
+RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
+
+RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
+    yarn workspaces focus --all --production && rm -rf "$(yarn cache clean)"
+
+# App config + example catalog data + scaffolder templates the app references.
+# These come straight from the build context (they aren't build outputs).
+COPY --chown=node:node app-config.yaml app-config.production.yaml ./
+COPY --chown=node:node examples ./examples
+COPY --chown=node:node templates ./templates
+
+# The built backend bundle.
+COPY --from=build --chown=node:node /app/packages/backend/dist/bundle.tar.gz ./
+RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
+
 CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]

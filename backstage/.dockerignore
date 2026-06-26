@@ -1,0 +1,15 @@
+# Keep the docker build context small. We DO need packages/ and plugins/ source
+# (the image is built multi-stage inside Docker), so unlike the create-app
+# default we do not exclude them — only build outputs, deps, and local files.
+.git
+.yarn/cache
+.yarn/install-state.gz
+node_modules
+**/node_modules
+**/dist
+**/dist-types
+dist-types
+*.local.yaml
+e2e-test-report
+coverage
+RESUME.md

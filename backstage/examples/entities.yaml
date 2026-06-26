@@ -1,0 +1,55 @@
+---
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-system
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: examples
+spec:
+  owner: guests
+---
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-component
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: example-website
+  annotations:
+    # Surfaces the Kubernetes tab for this component. The Kubernetes plugin only
+    # shows its tab when an entity declares one of these annotations; the value
+    # is used to find the component's workloads on the cluster (the deployment is
+    # expected to carry the label backstage.io/kubernetes-id=example-website).
+    backstage.io/kubernetes-id: example-website
+    # Example of the label-selector alternative (commented):
+    # backstage.io/kubernetes-label-selector: 'app=example-website'
+    # ArgoCD app name annotation so the ArgoCD tab/card can find the Application.
+    argocd/app-name: example-website
+    # Links this component to its AWS DevOps Agent Space (surfaces the "DevOps
+    # Agent" tab). In mock mode the id is arbitrary; with a real Agent Space set
+    # it to the actual space id.
+    aws-devops-agent/space-id: example-space
+spec:
+  type: website
+  lifecycle: experimental
+  owner: guests
+  system: examples
+  providesApis: [example-grpc-api]
+---
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-api
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: example-grpc-api
+spec:
+  type: grpc
+  lifecycle: experimental
+  owner: guests
+  system: examples
+  definition: |
+    syntax = "proto3";
+
+    service Exampler {
+      rpc Example (ExampleMessage) returns (ExampleMessage) {};
+    }
+
+    message ExampleMessage {
+      string example = 1;
+    };

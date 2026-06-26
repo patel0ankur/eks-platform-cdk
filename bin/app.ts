@@ -12,6 +12,7 @@ import { ArgoCdStack } from "../lib/argocd-stack";
 import { PlatformBootstrapStack } from "../lib/platform-bootstrap-stack";
 import { SecretsStack } from "../lib/secrets-stack";
 import { BackstageBuildStack } from "../lib/backstage-build-stack";
+import { BackstageDeployStack } from "../lib/backstage-deploy-stack";
 import { IngressStack } from "../lib/ingress-stack";
 import { config } from "../lib/config";
 
@@ -141,6 +142,16 @@ new BackstageBuildStack(app, `${config.prefix}-backstage-build`, {
   env,
   codeBuildRoleArn: iamStack.codeBuildRole.roleArn,
 });
+
+// Backstage deploy: a single ArgoCD Application (applied from CDK) that syncs
+// gitops/platform-apps/backstage and injects the ECR image URI via a Kustomize
+// override. Depends on the ArgoCD capability (provides the Application CRD).
+const backstageDeployStack = new BackstageDeployStack(
+  app,
+  `${config.prefix}-backstage-deploy`,
+  { env, cluster: eksStack.cluster },
+);
+backstageDeployStack.addDependency(argoCdStack);
 
 // Ingress: IAM (Pod Identity) for the AWS Load Balancer Controller. The
 // controller itself is installed via GitOps (gitops/platform/

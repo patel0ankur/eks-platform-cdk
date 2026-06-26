@@ -1,0 +1,26 @@
+# Backstage plugin-directory submission entry.
+#
+# To list this plugin on https://backstage.io/plugins:
+#   1. Publish both packages to npm (public) under your real scope.
+#   2. Fork github.com/backstage/backstage.
+#   3. Copy this file to microsite/data/plugins/aws-devops-agent.yaml in that repo
+#      (rename to match), replacing the placeholders below with your real values.
+#   4. Provide an icon: set iconUrl to an external URL, or add an image under
+#      microsite/static/ and reference it (e.g. /img/aws-devops-agent.png).
+#   5. Validate from the repo root:
+#        yarn install
+#        node ./scripts/verify-plugin-directory.js
+#   6. Open a PR to backstage/backstage.
+#
+# Docs: https://backstage.io/docs/plugins/add-to-directory
+# NOTE: description must be <= 170 characters.
+
+title: AWS DevOps Agent
+author: your-org
+authorUrl: https://github.com/your-org
+category: Monitoring
+description: Per-component tab surfacing AWS DevOps Agent — recommendations, investigations, an SRE chat, and one-click investigation triggering.
+documentation: https://github.com/your-org/backstage-plugin-aws-devops-agent#readme
+iconUrl: https://github.com/your-org/backstage-plugin-aws-devops-agent/raw/main/docs/icon.png
+npmPackageName: '@your-scope/backstage-plugin-aws-devops-agent'
+addedDate: '2026-06-26'

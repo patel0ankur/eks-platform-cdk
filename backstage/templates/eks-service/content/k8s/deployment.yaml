@@ -1,0 +1,58 @@
+# Deployment + Service for ${{ values.name }}.
+#
+# The image reference is a placeholder; the platform's GitOps/CI fills in the
+# real ECR image (e.g. via a Kustomize image override at deploy time), the same
+# way the platform deploys its other components. The pod carries the label
+# backstage.io/kubernetes-id so Backstage's Kubernetes tab can find it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ values.name }}
+  namespace: ${{ values.name }}
+  labels:
+    app: ${{ values.name }}
+    backstage.io/kubernetes-id: ${{ values.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${{ values.name }}
+  template:
+    metadata:
+      labels:
+        app: ${{ values.name }}
+        backstage.io/kubernetes-id: ${{ values.name }}
+    spec:
+      containers:
+        - name: ${{ values.name }}
+          # Replaced with the real ECR image by the platform's build pipeline.
+          image: app-image
+          ports:
+            - containerPort: ${{ values.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: ${{ values.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${{ values.name }}
+  namespace: ${{ values.name }}
+  labels:
+    app: ${{ values.name }}
+    backstage.io/kubernetes-id: ${{ values.name }}
+spec:
+  selector:
+    app: ${{ values.name }}
+  ports:
+    - port: 80
+      targetPort: ${{ values.port }}

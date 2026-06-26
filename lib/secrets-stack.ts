@@ -24,8 +24,9 @@ export interface SecretsStackProps extends cdk.StackProps {
  * than a controller service account.
  *
  * Secret JSON shape (key "password"):
- *   <prefix>/keycloak/admin     -> { "password": <generated> }
- *   <prefix>/keycloak/postgres  -> { "password": <generated> }
+ *   <prefix>/keycloak/admin      -> { "password": <generated> }
+ *   <prefix>/keycloak/postgres   -> { "password": <generated> }
+ *   <prefix>/backstage/postgres  -> { "password": <generated> }
  */
 export class SecretsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: SecretsStackProps) {
@@ -47,6 +48,7 @@ export class SecretsStack extends cdk.Stack {
 
     makePassword("KeycloakAdminSecret", `${config.prefix}/keycloak/admin`);
     makePassword("KeycloakPostgresSecret", `${config.prefix}/keycloak/postgres`);
+    makePassword("BackstagePostgresSecret", `${config.prefix}/backstage/postgres`);
 
     // Shared role the CSI provider assumes (via Pod Identity) to read secrets.
     // Trust principal pods.eks.amazonaws.com with AssumeRole + TagSession;
@@ -78,12 +80,35 @@ export class SecretsStack extends cdk.Stack {
 
     // Associate the reader role with the workload service accounts that mount
     // the CSI volume. The AWS CSI provider exchanges the pod's identity for
-    // this role when fetching secrets.
-    for (const sa of ["keycloak", "postgres"]) {
-      new eks.CfnPodIdentityAssociation(this, `PodIdentity-${sa}`, {
+    // this role when fetching secrets. The role grants read access to all
+    // secrets under the project prefix, so the same role serves every
+    // component; only the (namespace, serviceAccount) pairs differ.
+    //
+    // The construct `id` for each association is kept stable so adding a new
+    // consumer never renames (and thus replaces) an existing association — two
+    // associations can't coexist for the same (cluster, namespace, SA).
+    const secretConsumers: {
+      id: string;
+      namespace: string;
+      serviceAccount: string;
+    }[] = [
+      // Keycloak + its Postgres (namespace "keycloak").
+      { id: "keycloak", namespace: "keycloak", serviceAccount: "keycloak" },
+      { id: "postgres", namespace: "keycloak", serviceAccount: "postgres" },
+      // Backstage's Postgres (namespace "backstage"). Backstage itself reads
+      // the DB password from the synced Kubernetes Secret, so only Postgres
+      // needs to fetch from Secrets Manager.
+      {
+        id: "backstage-postgres",
+        namespace: "backstage",
+        serviceAccount: "postgres",
+      },
+    ];
+    for (const { id, namespace, serviceAccount } of secretConsumers) {
+      new eks.CfnPodIdentityAssociation(this, `PodIdentity-${id}`, {
         clusterName: props.clusterName,
-        namespace: "keycloak",
-        serviceAccount: sa,
+        namespace,
+        serviceAccount,
         roleArn: secretsReaderRole.roleArn,
       });
     }

@@ -67,9 +67,9 @@ export const config = {
     /** EC2 instance type for worker nodes. */
     instanceType: "t3.large",
     /** Desired node count at launch. */
-    desiredSize: 2,
+    desiredSize: 3,
     /** Minimum nodes the group scales down to. */
-    minSize: 1,
+    minSize: 2,
     /** Maximum nodes the group scales up to. */
     maxSize: 4,
   },

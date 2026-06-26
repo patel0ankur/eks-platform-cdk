@@ -1,0 +1,130 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: eks-service
+  title: Containerized service on EKS
+  description: >-
+    Scaffold a new containerized service and the GitOps manifests to run it on
+    this platform's EKS cluster. Creates a Git repository containing the app, a
+    Dockerfile, Kubernetes manifests, and an ArgoCD Application so the service is
+    deployed the same way the rest of the platform is (build image -> push to
+    ECR -> ArgoCD syncs the manifests).
+  tags:
+    - recommended
+    - eks
+    - kubernetes
+    - argocd
+spec:
+  owner: guests
+  type: service
+
+  # The form the developer fills in. Kept deliberately small: a name, an owner,
+  # the listening port, and where to create the repository.
+  parameters:
+    - title: Service details
+      required:
+        - name
+        - owner
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Unique name of the service (used for the repo, the
+            Kubernetes resources, and the catalog component).
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          ui:autofocus: true
+          ui:help: 'Lowercase letters, numbers and dashes (a valid DNS label).'
+        description:
+          title: Description
+          type: string
+          description: What this service does.
+        owner:
+          title: Owner
+          type: string
+          description: Team or user that owns this service.
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: [Group, User]
+        port:
+          title: Container port
+          type: integer
+          description: Port the service listens on inside the container.
+          default: 8080
+
+    - title: Repository location
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          description: The Git repository to create for this service.
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+
+  # Executed in the scaffolder backend using the form data above.
+  steps:
+    # 1) Render the app + Kubernetes manifests. The ArgoCD Application is NOT
+    #    rendered here because it needs the published repo URL, which only exists
+    #    after the publish step below.
+    - id: fetch-base
+      name: Generate sources
+      action: fetch:template
+      input:
+        url: ./content
+        # cookiecutter-style templating is applied to the files under ./content.
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          port: ${{ parameters.port }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        description: ${{ parameters.description }}
+        repoUrl: ${{ parameters.repoUrl }}
+        defaultBranch: main
+        repoVisibility: public
+
+    # 2) Now that the repo exists, render the ArgoCD Application with the real
+    #    repository URL and push it into the repo's k8s/ directory.
+    - id: fetch-argocd
+      name: Generate ArgoCD Application
+      action: fetch:template
+      input:
+        url: ./argocd
+        targetPath: ./argocd-out
+        values:
+          name: ${{ parameters.name }}
+          repoUrl: ${{ steps['publish'].output.remoteUrl }}
+
+    - id: push-argocd
+      name: Add ArgoCD Application to repo
+      action: github:repo:push
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        branch: main
+        sourcePath: ./argocd-out
+        commitMessage: 'Add ArgoCD Application manifest'
+
+    - id: register
+      name: Register in catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+  # Shown to the developer after the template runs.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}
