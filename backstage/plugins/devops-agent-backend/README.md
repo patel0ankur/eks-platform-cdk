@@ -5,6 +5,44 @@ holds AWS credentials and proxies the AWS DevOps Agent API so the browser never
 sees credentials. It exposes routes the frontend calls to list recommendations
 and investigations, drive chat, and trigger investigations via a generic webhook.
 
+## Prerequisites
+
+This plugin **surfaces** AWS DevOps Agent in Backstage; it does not provision it.
+You bring your own AWS DevOps Agent setup:
+
+1. **An AWS DevOps Agent Agent Space** — create one in the AWS DevOps Agent
+   console (it is your account's resource and holds your data). You will use its
+   Agent Space id in the component annotation. Each catalog component can point at
+   its own space. See the
+   [AWS DevOps Agent docs](https://docs.aws.amazon.com/devopsagent/latest/userguide/getting-started-with-aws-devops-agent-creating-an-agent-space.html).
+2. **AWS credentials for the Backstage backend** with `aidevops:` read + chat
+   permissions (see [AWS credentials](#aws-credentials) below). Delivered via the
+   standard AWS provider chain — env vars, a shared profile, EKS Pod Identity /
+   IRSA, ECS task role, etc.
+3. **Region** where your Agent Space lives (config `devOpsAgent.region`, or the
+   ambient AWS region).
+
+> **No AWS Agent Space yet? Use mock mode.** Set `devOpsAgent.mock: true` to run
+> the plugin with deterministic sample data — no AWS account, credentials, or
+> Agent Space required. Great for evaluating the plugin or local development.
+
+Minimum IAM for the read + chat features:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "aidevops:ListAgentSpaces", "aidevops:GetAgentSpace",
+    "aidevops:ListServices", "aidevops:GetService",
+    "aidevops:ListRecommendations", "aidevops:GetRecommendation",
+    "aidevops:ListBacklogTasks", "aidevops:ListExecutions",
+    "aidevops:ListChats", "aidevops:CreateChat",
+    "aidevops:SendMessage", "aidevops:ListPendingMessages"
+  ],
+  "Resource": "*"
+}
+```
+
 ## Installation
 
 ```bash
