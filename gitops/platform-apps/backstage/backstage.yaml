@@ -39,10 +39,13 @@ data:
       cors:
         origin: https://patelax.people.aws.dev
     auth:
-      # Guest sign-in for now. Keycloak OIDC on the new frontend system is a
-      # later step (it needs a sign-in resolver + SignInPage in the app).
+      # Guest sign-in for now. The guest provider refuses to issue tokens when
+      # NODE_ENV != development unless this flag is set, so we enable it
+      # explicitly. This is TEMPORARY — it will be replaced by Keycloak OIDC
+      # (a later step: sign-in resolver + SignInPage on the new frontend system).
       providers:
-        guest: {}
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
     devOpsAgent:
       # AWS DevOps Agent plugin in mock mode (no Agent Space provisioned yet).
       mock: true
