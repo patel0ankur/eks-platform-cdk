@@ -43,13 +43,6 @@ data:
       # later step (it needs a sign-in resolver + SignInPage in the app).
       providers:
         guest: {}
-    catalog:
-      # Clear the GitHub org auto-discovery provider declared in the baked
-      # production config: with GITHUB_ORG unset it throws at startup
-      # ("Either organization or app must be specified"). Re-enable by setting
-      # GITHUB_ORG + GITHUB_TOKEN once GitHub discovery is wanted.
-      providers:
-        github: {}
     devOpsAgent:
       # AWS DevOps Agent plugin in mock mode (no Agent Space provisioned yet).
       mock: true

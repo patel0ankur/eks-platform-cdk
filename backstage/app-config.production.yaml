@@ -33,26 +33,24 @@ auth:
     guest: {}
 
 catalog:
-  # GitHub auto-discovery: scans a GitHub organization for catalog-info.yaml
-  # files and registers them automatically (no manual imports). Runs only in the
-  # deployed environment.
+  # GitHub org auto-discovery is OPT-IN. It is intentionally NOT configured by
+  # default because the @backstage/plugin-catalog-backend-module-github provider
+  # throws at startup ("Either organization or app must be specified") if the org
+  # is unset — and once a `catalog.providers.github` block exists, a deep-merging
+  # config override cannot remove it. So enabling discovery is additive: add a
+  # block like the following (and a GITHUB_TOKEN via integrations.github) when you
+  # want it. Until then the catalog uses the example locations below + manual
+  # imports.
   #
-  # TODO (finalize in the EKS phase): set GITHUB_ORG to your org and provide a
-  # GITHUB_TOKEN (PAT or GitHub App) with repo read access (see
-  # integrations.github). The backend module
-  # @backstage/plugin-catalog-backend-module-github reads this. If GITHUB_ORG is
-  # unset the backend fails to start, so this block lives here (production-only),
-  # not in the base config.
-  providers:
-    github:
-      platformRepos:
-        organization: '${GITHUB_ORG}'
-        catalogPath: '/catalog-info.yaml'
-        filters:
-          branch: 'main'
-        schedule:
-          frequency: { minutes: 30 }
-          timeout: { minutes: 3 }
+  #   providers:
+  #     github:
+  #       platformRepos:
+  #         organization: 'your-github-org'
+  #         catalogPath: '/catalog-info.yaml'
+  #         filters: { branch: 'main' }
+  #         schedule:
+  #           frequency: { minutes: 30 }
+  #           timeout: { minutes: 3 }
 
   # Overrides the default list locations from app-config.yaml as these contain example data.
   # See https://backstage.io/docs/features/software-catalog/#adding-components-to-the-catalog for more details
