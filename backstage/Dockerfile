@@ -9,8 +9,13 @@
 # Stage 1 installs deps + builds the backend bundle; stage 2 is a slim runtime
 # image that installs only production deps and runs the bundle.
 
+# Base image is pulled from ECR Public (AWS's mirror of Docker Hub official
+# images) instead of docker.io, so CI builds don't hit Docker Hub's anonymous
+# pull rate limit (HTTP 429). Same node:22-bookworm-slim image, different (un-
+# rate-limited) registry.
+
 # ---------- Stage 1: build ----------
-FROM node:22-bookworm-slim AS build
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS build
 
 # Build deps: python3/g++ for native modules (isolated-vm via scaffolder,
 # better-sqlite3), plus build-essential.
@@ -40,7 +45,7 @@ RUN yarn tsc
 RUN yarn build:backend
 
 # ---------- Stage 2: runtime ----------
-FROM node:22-bookworm-slim
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
 
 ENV PYTHON=/usr/bin/python3
 
