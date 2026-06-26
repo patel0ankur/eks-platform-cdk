@@ -13,6 +13,9 @@ import argoCdPlugin from '@roadiehq/backstage-plugin-argo-cd/alpha';
 // DevOps Agent Space.
 import devopsAgentPlugin from '@your-scope/backstage-plugin-aws-devops-agent';
 import { navModule } from './modules/nav';
+// Keycloak OIDC sign-in (new frontend system): registers the auth API + a
+// SignInPage with a "Sign in with Keycloak" button.
+import { authModule } from './modules/auth';
 
 export default createApp({
   features: [
@@ -20,6 +23,7 @@ export default createApp({
     kubernetesPlugin,
     argoCdPlugin,
     devopsAgentPlugin,
+    authModule,
     navModule,
   ],
 });

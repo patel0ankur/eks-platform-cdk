@@ -28,6 +28,9 @@ backend.add(import('@backstage/plugin-auth-backend'));
 // See https://backstage.io/docs/backend-system/building-backends/migrating#the-auth-plugin
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // See https://backstage.io/docs/auth/guest/provider
+// Generic OIDC provider (used for Keycloak SSO). Connection details + sign-in
+// resolver are configured under auth.providers.oidc in app-config.
+backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
 
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend'));

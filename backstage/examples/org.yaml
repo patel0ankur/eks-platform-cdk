@@ -7,6 +7,18 @@ metadata:
 spec:
   memberOf: [guests]
 ---
+# Catalog user matched by the Keycloak OIDC sign-in resolver
+# (emailLocalPartMatchingUserEntityName): the email local part of the Keycloak
+# user "developer@<domain>" maps to this User entity's name "developer".
+# Add a User here for each person who should be able to sign in, or switch the
+# resolver / enable discovery to source users from your IdP.
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: developer
+spec:
+  memberOf: [guests]
+---
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-group
 apiVersion: backstage.io/v1alpha1
 kind: Group

@@ -38,14 +38,29 @@ data:
       # Browser origin allowed to call the backend (same host).
       cors:
         origin: https://patelax.people.aws.dev
+    # Use the redirect (non-popup) sign-in flow so SSO works cleanly behind the
+    # ALB without popup/cookie quirks.
+    enableExperimentalRedirectFlow: true
     auth:
-      # Guest sign-in for now. The guest provider refuses to issue tokens when
-      # NODE_ENV != development unless this flag is set, so we enable it
-      # explicitly. This is TEMPORARY — it will be replaced by Keycloak OIDC
-      # (a later step: sign-in resolver + SignInPage on the new frontend system).
+      environment: production
+      # Session secret for the OIDC cookie flow (any stable random string).
+      session:
+        secret: ${AUTH_SESSION_SECRET}
       providers:
-        guest:
-          dangerouslyAllowOutsideDevelopment: true
+        # Keycloak via the generic OIDC provider. Provider id MUST be "oidc"
+        # (matches the backend strategy + the /api/auth/oidc/... callback).
+        oidc:
+          production:
+            metadataUrl: https://patelax.people.aws.dev/keycloak/realms/backstage/.well-known/openid-configuration
+            clientId: backstage
+            clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+            prompt: auto
+            signIn:
+              resolvers:
+                # Maps the Keycloak user's email local-part (e.g. "developer"
+                # from developer@example.com) to a catalog User of that name.
+                # Add catalog Users (examples/org.yaml) for each sign-in user.
+                - resolver: emailLocalPartMatchingUserEntityName
     devOpsAgent:
       # AWS DevOps Agent plugin in mock mode (no Agent Space provisioned yet).
       mock: true
@@ -110,6 +125,19 @@ spec:
                 secretKeyRef:
                   name: backstage-postgres
                   key: POSTGRES_PASSWORD
+            # Keycloak OIDC client secret (harvested into this namespace by the
+            # Keycloak config Job as the "keycloak-clients" secret).
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-clients
+                  key: BACKSTAGE_CLIENT_SECRET
+            # Backstage auth session secret for the OIDC cookie flow.
+            - name: AUTH_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backstage-auth
+                  key: SESSION_SECRET
             - name: NODE_ENV
               value: production
           ports:

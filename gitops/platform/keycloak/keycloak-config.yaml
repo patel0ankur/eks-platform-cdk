@@ -59,6 +59,7 @@ data:
       "frontchannelLogout": true,
       "rootUrl": "https://DOMAIN_PLACEHOLDER",
       "redirectUris": [
+        "https://DOMAIN_PLACEHOLDER/api/auth/oidc/handler/frame",
         "https://DOMAIN_PLACEHOLDER/api/auth/keycloak-oidc/handler/frame"
       ],
       "webOrigins": ["/*"]
@@ -141,7 +142,16 @@ data:
       --from-literal=BACKSTAGE_CLIENT_SECRET="$SECRET" \
       --dry-run=client -o yaml | kubectl apply -f -
 
-    echo "Keycloak configured: realm=$REALM, backstage client + secret written."
+    # Backstage auth session secret (signs OIDC session cookies). Generated once
+    # and kept stable across re-runs — only create it if it doesn't already
+    # exist, so restarts don't invalidate live sessions.
+    if ! kubectl get secret backstage-auth -n backstage >/dev/null 2>&1; then
+      SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+      kubectl create secret generic backstage-auth -n backstage \
+        --from-literal=SESSION_SECRET="$SESSION_SECRET"
+    fi
+
+    echo "Keycloak configured: realm=$REALM, backstage client + session secret written."
 ---
 apiVersion: batch/v1
 kind: Job
