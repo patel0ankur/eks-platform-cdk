@@ -1,0 +1,48 @@
+# RBAC for the Backstage Kubernetes plugin.
+#
+# Backstage runs inside this cluster and reads workload status to show on each
+# component's "Kubernetes" tab. It authenticates as the `backstage` service
+# account (in-cluster client) and needs read-only access cluster-wide. This is
+# the standard read-only ClusterRole from the Backstage Kubernetes docs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backstage-kubernetes-read-only
+rules:
+  - apiGroups: ['*']
+    resources:
+      - pods
+      - pods/log
+      - configmaps
+      - services
+      - deployments
+      - replicasets
+      - horizontalpodautoscalers
+      - ingresses
+      - statefulsets
+      - limitranges
+      - resourcequotas
+      - daemonsets
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['batch']
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['metrics.k8s.io']
+    resources:
+      - pods
+    verbs: ['get', 'list']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backstage-kubernetes-read-only
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backstage-kubernetes-read-only
+subjects:
+  - kind: ServiceAccount
+    name: backstage
+    namespace: backstage

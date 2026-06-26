@@ -70,6 +70,20 @@ data:
     devOpsAgent:
       # AWS DevOps Agent plugin in mock mode (no Agent Space provisioned yet).
       mock: true
+    kubernetes:
+      # Backstage reads workloads from THIS cluster (it runs inside it). The
+      # 'config' locator with authProvider 'serviceAccount' and NO
+      # serviceAccountToken makes the plugin use the in-cluster client (the
+      # mounted SA token); the url/caData below are ignored in that mode.
+      serviceLocatorMethod:
+        type: 'multiTenant'
+      clusterLocatorMethods:
+        - type: 'config'
+          clusters:
+            - name: idp-cluster
+              url: https://kubernetes.default.svc
+              authProvider: 'serviceAccount'
+              skipTLSVerify: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -87,11 +101,10 @@ spec:
         app: backstage
     spec:
       serviceAccountName: backstage
-      # No Kubernetes API access needed yet. The Kubernetes/ArgoCD plugins show
-      # live cluster data only once configured (a later step); for now the portal
-      # runs with catalog, scaffolder, TechDocs, search, and the DevOps Agent tab
-      # (mock). Not mounting the SA token keeps things minimal.
-      automountServiceAccountToken: false
+      # Mount the service-account token so the Kubernetes plugin can talk to the
+      # cluster API via the in-cluster client (read-only access granted by
+      # kubernetes-rbac.yaml). Used by the per-component "Kubernetes" tab.
+      automountServiceAccountToken: true
       # Wait for Postgres to accept connections so a fresh deploy doesn't
       # crash-loop while the database comes up.
       initContainers:

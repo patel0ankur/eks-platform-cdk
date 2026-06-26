@@ -8,6 +8,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - secret-provider.yaml
+  - kubernetes-rbac.yaml
   - postgres.yaml
   - backstage.yaml
   - ingress.yaml
