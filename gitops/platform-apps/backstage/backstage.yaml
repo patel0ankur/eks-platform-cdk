@@ -1,21 +1,21 @@
-# Backstage developer portal.
+# Backstage developer portal (our own Backstage app — built from source into the
+# idp-backstage ECR image, NOT a third-party image).
 #
-# The container image is the one built by CodeBuild into ECR (idp-backstage).
 # The manifest references the image by the placeholder name "backstage-image";
 # the ArgoCD Application (defined in CDK, BackstageDeployStack) rewrites that to
-# the real ECR URI via a Kustomize image override. This keeps the
-# account-specific ECR registry out of git.
+# the real ECR URI via a Kustomize image override, keeping the account-specific
+# ECR registry out of git.
 #
-# Two values are baked wrong for our environment in the upstream image and are
-# corrected by the layered app-config below (mounted at /config):
-#   - baseUrl was localhost -> set to the public root URL https://<domain>
-#   - the Keycloak OIDC metadataUrl pointed at the upstream demo realm -> set to
-#     our realm's discovery URL.
+# This config layer (app-config.extra.yaml, mounted at /config and passed last)
+# overrides the image's baked defaults for the deployed environment:
+#   - app/backend baseUrl -> the public root URL (the app is served at "/")
+#   - auth -> guest for now (Keycloak OIDC is wired in a later step)
+#   - catalog.providers.github -> disabled (the baked production config declares
+#     a GitHub org provider that CRASHES the backend at boot if GITHUB_ORG is
+#     unset; we clear it here until GitHub discovery is configured)
 #
 # Secrets come from Kubernetes Secrets (never from git):
 #   - backstage-postgres : DB password, synced from Secrets Manager (CSI).
-#   - keycloak-clients   : the OIDC client secret, published into this namespace
-#                          by Keycloak's configuration Job.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -39,18 +39,20 @@ data:
       cors:
         origin: https://patelax.people.aws.dev
     auth:
-      # The keycloak-oidc provider is registered under the "development" key in
-      # the image's app-config; keep that environment selected.
-      environment: development
+      # Guest sign-in for now. Keycloak OIDC on the new frontend system is a
+      # later step (it needs a sign-in resolver + SignInPage in the app).
       providers:
-        keycloak-oidc:
-          development:
-            # OIDC discovery for OUR Keycloak realm (overrides the upstream
-            # demo URL baked into the image).
-            metadataUrl: https://patelax.people.aws.dev/keycloak/realms/backstage/.well-known/openid-configuration
-            clientId: backstage
-            clientSecret: ${KEYCLOAK_CLIENT_SECRET}
-            prompt: auto
+        guest: {}
+    catalog:
+      # Clear the GitHub org auto-discovery provider declared in the baked
+      # production config: with GITHUB_ORG unset it throws at startup
+      # ("Either organization or app must be specified"). Re-enable by setting
+      # GITHUB_ORG + GITHUB_TOKEN once GitHub discovery is wanted.
+      providers:
+        github: {}
+    devOpsAgent:
+      # AWS DevOps Agent plugin in mock mode (no Agent Space provisioned yet).
+      mock: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -68,11 +70,10 @@ spec:
         app: backstage
     spec:
       serviceAccountName: backstage
-      # No Kubernetes API access is needed for this first deployment (the portal
-      # runs with mock integrations, see MOCK_MODE below). Not mounting the SA
-      # token keeps the backend's optional in-cluster plugins disabled, so it
-      # boots cleanly without extra cluster RBAC. Real cluster/scaffolder
-      # integration is a later step.
+      # No Kubernetes API access needed yet. The Kubernetes/ArgoCD plugins show
+      # live cluster data only once configured (a later step); for now the portal
+      # runs with catalog, scaffolder, TechDocs, search, and the DevOps Agent tab
+      # (mock). Not mounting the SA token keeps things minimal.
       automountServiceAccountToken: false
       # Wait for Postgres to accept connections so a fresh deploy doesn't
       # crash-loop while the database comes up.
@@ -99,8 +100,9 @@ spec:
             - "--config"
             - "/config/app-config.extra.yaml"
           env:
-            # Database (the production config reads these). Host is the in-namespace
-            # Postgres Service; the password comes from the CSI-synced Secret.
+            # Database (the baked production config reads these). Host is the
+            # in-namespace Postgres Service; the password comes from the
+            # CSI-synced Secret (from AWS Secrets Manager).
             - name: POSTGRES_HOST
               value: postgres.backstage.svc
             - name: POSTGRES_PORT
@@ -112,23 +114,6 @@ spec:
                 secretKeyRef:
                   name: backstage-postgres
                   key: POSTGRES_PASSWORD
-            # Presence of KEYCLOAK_URL is what enables the OIDC provider in the
-            # backend; the actual connection uses the metadataUrl in app-config.
-            - name: KEYCLOAK_URL
-              value: https://patelax.people.aws.dev/keycloak
-            # The OIDC client secret harvested by Keycloak's config Job.
-            - name: KEYCLOAK_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: keycloak-clients
-                  key: BACKSTAGE_CLIENT_SECRET
-            # Run in real (non-mock) mode. The backend enables its Kubernetes,
-            # kro, and ArgoCD integrations only when an in-cluster service
-            # account token is present; since we don't mount one (above), those
-            # are skipped and the portal boots with just catalog, scaffolder,
-            # TechDocs, search, and Keycloak auth. (MOCK_MODE is intentionally
-            # NOT set: the mock plugins require fixture files absent from the
-            # production image.)
             - name: NODE_ENV
               value: production
           ports:
@@ -138,8 +123,8 @@ spec:
             - name: app-config
               mountPath: /config
               readOnly: true
-          # The backend serves the frontend under /backstage on 7007. A TCP
-          # probe avoids depending on a specific health path while it warms up.
+          # The backend serves the app at "/" on 7007. A TCP probe avoids
+          # depending on a specific health path while it warms up.
           readinessProbe:
             tcpSocket:
               port: 7007
