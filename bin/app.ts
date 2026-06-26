@@ -138,9 +138,15 @@ secretsStack.addDependency(eksStack);
 
 // Backstage image build: CodeBuild builds backstage/ from this repo into ECR,
 // auto-triggered on deploy. Reuses the CodeBuild role from IamStack.
+//
+// `buildToken` changes on every `cdk deploy` so the build re-triggers and the
+// image is rebuilt from the latest source — otherwise CloudFormation sees no
+// change to the trigger and the image goes stale after the first deploy.
+// Override CDK_BACKSTAGE_BUILD_TOKEN to pin/skip a rebuild (e.g. in tests).
 new BackstageBuildStack(app, `${config.prefix}-backstage-build`, {
   env,
   codeBuildRoleArn: iamStack.codeBuildRole.roleArn,
+  buildToken: process.env.CDK_BACKSTAGE_BUILD_TOKEN ?? `${Date.now()}`,
 });
 
 // Backstage deploy: a single ArgoCD Application (applied from CDK) that syncs

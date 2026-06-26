@@ -10,6 +10,12 @@ import { config } from "./config";
 export interface BackstageBuildStackProps extends cdk.StackProps {
   /** ARN of the CodeBuild service role (from IamStack). */
   readonly codeBuildRoleArn: string;
+  /**
+   * Opaque token that changes per deploy. Passed to the build-trigger custom
+   * resource so CloudFormation re-runs it (and rebuilds the image) on every
+   * `cdk deploy`, keeping the image in sync with the source.
+   */
+  readonly buildToken: string;
 }
 
 /**
@@ -160,6 +166,9 @@ def handler(event, context):
       serviceToken: triggerFn.functionArn,
       properties: {
         ProjectName: project.projectName,
+        // Changes every deploy so CloudFormation re-invokes the Lambda (Update),
+        // which re-runs the build against the latest source.
+        BuildToken: props.buildToken,
       },
     });
 
