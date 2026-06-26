@@ -47,6 +47,11 @@ data:
       session:
         secret: ${AUTH_SESSION_SECRET}
       providers:
+        # Guest sign-in (the SignInPage offers it as a quick option). Needs the
+        # flag because the provider refuses to issue tokens when environment !=
+        # development. Guest maps to user:default/guest.
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
         # Keycloak via the generic OIDC provider. Provider id MUST be "oidc"
         # (matches the backend strategy + the /api/auth/oidc/... callback).
         oidc:
