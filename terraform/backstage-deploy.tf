@@ -27,20 +27,41 @@ resource "kubernetes_namespace_v1" "backstage" {
   depends_on = [module.eks]
 }
 
+# HTTPS is enabled when a domain is configured. With an empty domain the
+# deploy stays zero-prerequisite: HTTP only, on the ALB's generated DNS name.
+locals {
+  https_enabled = var.domain != ""
+
+  # Ingress annotations. In HTTPS mode: listen on 443 (and 80 for the
+  # redirect), attach the ACM cert, and redirect HTTP->HTTPS. In HTTP mode:
+  # just listen on 80.
+  backstage_ingress_annotations = local.https_enabled ? {
+    "alb.ingress.kubernetes.io/listen-ports"    = jsonencode([{ HTTP = 80 }, { HTTPS = 443 }])
+    "alb.ingress.kubernetes.io/certificate-arn" = var.acm_certificate_arn
+    "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
+    } : {
+    "alb.ingress.kubernetes.io/listen-ports" = jsonencode([{ HTTP = 80 }])
+  }
+}
+
 # The Backstage Ingress. Creating it triggers EKS Auto Mode to provision an
 # internet-facing ALB (via the default "alb" IngressClass from ingress.tf).
 # wait_for_load_balancer blocks until the ALB is up and its DNS name is
 # populated, which we then read below.
 resource "kubernetes_ingress_v1" "backstage" {
   metadata {
-    name      = "backstage"
-    namespace = kubernetes_namespace_v1.backstage.metadata[0].name
+    name        = "backstage"
+    namespace   = kubernetes_namespace_v1.backstage.metadata[0].name
+    annotations = local.backstage_ingress_annotations
   }
 
   spec {
     ingress_class_name = "alb"
 
     rule {
+      # Bind to the configured host in HTTPS mode so the cert's host matches;
+      # omit the host in HTTP mode so the ALB serves on any host (its DNS name).
+      host = local.https_enabled ? var.domain : null
       http {
         path {
           path      = "/"
@@ -64,13 +85,54 @@ resource "kubernetes_ingress_v1" "backstage" {
 }
 
 locals {
-  # The ALB DNS name EKS Auto Mode generated for the Ingress. HTTP only — no
-  # domain or certificate required, so this works for any user out of the box.
-  backstage_host = kubernetes_ingress_v1.backstage.status[0].load_balancer[0].ingress[0].hostname
-  backstage_url  = "http://${local.backstage_host}"
+  # The ALB DNS name EKS Auto Mode generated for the Ingress.
+  backstage_alb_host = kubernetes_ingress_v1.backstage.status[0].load_balancer[0].ingress[0].hostname
+
+  # The public URL Backstage is reached at, and baked into its baseUrl/CORS:
+  #   - HTTPS mode: the configured domain over https (via the ACM cert + the
+  #     Route53 alias below).
+  #   - HTTP mode:  the ALB's generated DNS name over http (zero prerequisites).
+  backstage_url = local.https_enabled ? "https://${var.domain}" : "http://${local.backstage_alb_host}"
 
   # Fully-qualified ECR image the CodeBuild project pushes (backstage-build.tf).
   backstage_image = "${aws_ecr_repository.backstage.repository_url}:latest"
+}
+
+# Look up the ALB that EKS Auto Mode created for the Backstage Ingress, by the
+# tags the controller stamps on it. Used to build the Route53 alias record
+# (which needs the ALB's DNS name + canonical hosted zone id). Depends on the
+# Ingress so the ALB exists before we query for it.
+data "aws_lb" "backstage" {
+  count = local.https_enabled ? 1 : 0
+
+  tags = {
+    "eks:eks-cluster-name"               = var.cluster_name
+    "ingress.eks.amazonaws.com/stack"    = "backstage/backstage"
+    "ingress.eks.amazonaws.com/resource" = "LoadBalancer"
+  }
+
+  depends_on = [kubernetes_ingress_v1.backstage]
+}
+
+# Route53 apex alias -> ALB, so var.domain resolves to the load balancer.
+# An alias (not CNAME) is required at a zone apex. Only created in HTTPS mode.
+data "aws_route53_zone" "platform" {
+  count        = local.https_enabled ? 1 : 0
+  name         = var.domain
+  private_zone = false
+}
+
+resource "aws_route53_record" "backstage_apex" {
+  count   = local.https_enabled ? 1 : 0
+  zone_id = data.aws_route53_zone.platform[0].zone_id
+  name    = var.domain
+  type    = "A"
+
+  alias {
+    name                   = data.aws_lb.backstage[0].dns_name
+    zone_id                = data.aws_lb.backstage[0].zone_id
+    evaluate_target_health = true
+  }
 }
 
 # Generated secrets, so a public forker needs no external secret store. These
