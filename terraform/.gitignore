@@ -1,0 +1,25 @@
+# Local Terraform state — contains generated secrets (DB password, session
+# secret) and full resource detail in plaintext. MUST NOT be committed,
+# especially to a public repo.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Provider plugins and module cache — large binaries, re-fetched by
+# `terraform init`.
+.terraform/
+
+# Crash logs and any locally-supplied variable files (may hold secrets).
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!example.tfvars
+
+# CLI config / plan output artifacts.
+.terraformrc
+terraform.rc
+*.tfplan
+
+# The provider lock file (.terraform.lock.hcl) is intentionally NOT ignored —
+# it pins provider versions and should be committed.
