@@ -122,8 +122,8 @@ catalog:
       rules:
         - allow: [Template]
 
-    # Platform software template: scaffold a containerized service + GitOps
-    # manifests (Dockerfile, k8s, ArgoCD Application) for the EKS cluster.
+    # Platform software template: scaffold a containerized service + a
+    # Dockerfile so a developer can create a new service from the portal.
     - type: file
       target: ../../templates/eks-service/template.yaml
       rules:
@@ -145,9 +145,6 @@ catalog:
     #   rules:
     #     - allow: [User, Group]
 
-kubernetes:
-  # see https://backstage.io/docs/features/kubernetes/configuration for kubernetes configuration options
-
 # see https://backstage.io/docs/permissions/getting-started for more on the permission framework
 permission:
   # setting this to `false` will disable permissions
@@ -157,10 +154,3 @@ permission:
 mcpActions:
   name: 'My Company Backstage' # defaults to "backstage"
   description: 'Tools for managing your software catalog, creating new services from templates, and exploring your developer portal' # optional
-
-# AWS DevOps Agent plugin (devops-agent-backend). In local dev we run in mock
-# mode so the tab works without a provisioned Agent Space or AWS credentials.
-# For real use: set mock=false, optionally set region/assumeRoleArn, and add
-# per-space webhook config to enable the "Start investigation" action.
-devOpsAgent:
-  mock: true

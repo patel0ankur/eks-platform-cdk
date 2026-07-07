@@ -5,13 +5,6 @@ metadata:
   {%- if values.description %}
   description: ${{ values.description | dump }}
   {%- endif %}
-  annotations:
-    # Link this component to its workloads on the EKS cluster (the Kubernetes
-    # tab in Backstage). The Deployment carries the matching label
-    # backstage.io/kubernetes-id.
-    backstage.io/kubernetes-id: ${{ values.name }}
-    # Link this component to its ArgoCD Application (the ArgoCD tab).
-    argocd/app-name: ${{ values.name }}
 spec:
   type: service
   lifecycle: experimental
