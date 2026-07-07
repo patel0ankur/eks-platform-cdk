@@ -2,8 +2,7 @@
 #
 # The image reference is a placeholder; the platform's GitOps/CI fills in the
 # real ECR image (e.g. via a Kustomize image override at deploy time), the same
-# way the platform deploys its other components. The pod carries the label
-# backstage.io/kubernetes-id so Backstage's Kubernetes tab can find it.
+# way the platform deploys its other components.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,7 +10,6 @@ metadata:
   namespace: ${{ values.name }}
   labels:
     app: ${{ values.name }}
-    backstage.io/kubernetes-id: ${{ values.name }}
 spec:
   replicas: 1
   selector:
@@ -21,7 +19,6 @@ spec:
     metadata:
       labels:
         app: ${{ values.name }}
-        backstage.io/kubernetes-id: ${{ values.name }}
     spec:
       containers:
         - name: ${{ values.name }}
@@ -49,7 +46,6 @@ metadata:
   namespace: ${{ values.name }}
   labels:
     app: ${{ values.name }}
-    backstage.io/kubernetes-id: ${{ values.name }}
 spec:
   selector:
     app: ${{ values.name }}

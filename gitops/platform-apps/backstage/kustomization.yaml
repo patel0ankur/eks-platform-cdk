@@ -1,14 +1,17 @@
 # Kustomize entrypoint for the Backstage app. ArgoCD renders this directory
-# with Kustomize, which lets the ArgoCD Application (defined in CDK) override
-# the container image at sync time: the placeholder name "backstage-image" is
-# rewritten to the real ECR repository URI via a Kustomize `images:` patch.
-# That keeps the account-specific ECR registry out of git.
+# with Kustomize, which lets the ArgoCD Application (defined in Terraform,
+# backstage-deploy.tf) override the container image at sync time: the
+# placeholder name "backstage-image" is rewritten to the real ECR repository
+# URI via a Kustomize `images:` patch. That keeps the account-specific ECR
+# registry out of git.
+#
+# NOTE: the namespace and the Ingress are NOT listed here — Terraform owns
+# them, because the Ingress must be applied first so its ALB DNS name can be
+# discovered and fed back into Backstage's runtime config. ArgoCD manages the
+# rest of the workload.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - namespace.yaml
-  - secret-provider.yaml
-  - kubernetes-rbac.yaml
+  - serviceaccounts.yaml
   - postgres.yaml
   - backstage.yaml
-  - ingress.yaml

@@ -1,10 +1,12 @@
 # PostgreSQL backing store for Backstage (catalog, scaffolder, sessions).
 # A single replica with a persistent volume is sufficient at this scale.
+# The volume binds via EKS Auto Mode's default storage (no StorageClass
+# needed).
 #
-# The password comes from AWS Secrets Manager via the Secrets Store CSI Driver:
-# the pod mounts the CSI volume (SecretProviderClass backstage-postgres), which
-# syncs the "backstage-postgres" Kubernetes Secret consumed below. DB name and
-# user are not secret, so they are plain env values.
+# The password comes from the "backstage-runtime" Kubernetes Secret that
+# Terraform creates (backstage-deploy.tf) — no AWS Secrets Manager or CSI
+# driver involved. DB name and user are not secret, so they are plain env
+# values.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -35,28 +37,17 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: backstage-postgres
+                  name: backstage-runtime
                   key: POSTGRES_PASSWORD
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
               subPath: pgdata
-            # Mounting the CSI volume is what triggers the secret sync.
-            - name: secrets-store
-              mountPath: /mnt/secrets-store
-              readOnly: true
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "backstage"]
             initialDelaySeconds: 10
             periodSeconds: 10
-      volumes:
-        - name: secrets-store
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: backstage-postgres
   volumeClaimTemplates:
     - metadata:
         name: data
