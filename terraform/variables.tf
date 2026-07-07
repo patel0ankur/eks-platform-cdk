@@ -52,16 +52,30 @@ variable "kubernetes_version" {
   default     = "1.35"
 }
 
-# Platform domain — the hostname the ingress (ALB) serves, and the base for
-# Keycloak/Backstage URLs and OIDC redirects. You MUST point this DNS name at
-# the ALB (e.g. CNAME) for sign-in to work.
+# Platform domain — the apex hostname Backstage is served at.
 #
-# PREREQUISITE for public users: set TF_VAR_domain to a domain you control.
-# The default below is a placeholder.
+# OPTIONAL. Leave empty ("") for a zero-prerequisite deploy: Backstage is
+# exposed over HTTP on the ALB's auto-generated DNS name, no domain or
+# certificate needed.
+#
+# To serve HTTPS on your own domain, set BOTH:
+#   - domain               = the hostname (must be an apex/host the ACM cert
+#                            below covers), e.g. patelax.people.aws.dev
+#   - acm_certificate_arn  = an ISSUED ACM cert (us-east-1) covering that host
+# and have a Route53 public hosted zone for the domain. Terraform then creates
+# the apex alias record and switches the Ingress to HTTPS.
 variable "domain" {
-  description = "Platform domain served by the ingress ALB"
+  description = "Apex domain for HTTPS (empty = HTTP on the ALB DNS name)"
   type        = string
-  default     = "platform.example.com"
+  default     = ""
+}
+
+# ACM certificate ARN (us-east-1) covering var.domain. Required only when
+# var.domain is set. Ignored when domain is empty.
+variable "acm_certificate_arn" {
+  description = "ACM certificate ARN for var.domain (required if domain is set)"
+  type        = string
+  default     = ""
 }
 
 # GitOps source repository that ArgoCD syncs from. ArgoCD Application CRs
