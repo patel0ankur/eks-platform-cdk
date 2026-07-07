@@ -70,3 +70,32 @@ module "eks" {
     Environment = "platform"
   }
 }
+
+# Default StorageClass backed by EKS Auto Mode's EBS CSI driver
+# (ebs.csi.eks.amazonaws.com). Auto Mode enables managed storage but does NOT
+# create a default-annotated StorageClass, so a PersistentVolumeClaim without
+# an explicit storageClassName (e.g. the Backstage/Postgres data volume) would
+# stay Pending. Marking this class default makes those PVCs bind automatically.
+# gp3 is cheaper/faster than the cluster's legacy gp2 in-tree class; volumes
+# are encrypted and bound once a consuming pod is scheduled.
+resource "kubectl_manifest" "gp3_default_storage_class" {
+  yaml_body = yamlencode({
+    apiVersion = "storage.k8s.io/v1"
+    kind       = "StorageClass"
+    metadata = {
+      name = "gp3"
+      annotations = {
+        "storageclass.kubernetes.io/is-default-class" = "true"
+      }
+    }
+    provisioner          = "ebs.csi.eks.amazonaws.com"
+    volumeBindingMode    = "WaitForFirstConsumer"
+    allowVolumeExpansion = true
+    parameters = {
+      type      = "gp3"
+      encrypted = "true"
+    }
+  })
+
+  depends_on = [module.eks]
+}
